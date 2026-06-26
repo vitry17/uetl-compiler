@@ -40,6 +40,22 @@ docker build -t uetl-compiler .
 docker run -p 4001:4001 uetl-compiler
 ```
 
+## Performance
+
+```bash
+cargo bench
+```
+
+On a representative email (logo, responsive two-column section, button, dark-mode image), measured on a regular dev machine:
+
+| Benchmark                     | Time      |
+|--------------------------------|-----------|
+| Parse UETL → AST               | ~25 µs    |
+| Compile AST → HTML (1 profile) | ~17 µs    |
+| Compile for all 7 profiles     | ~136 µs   |
+
+Comfortably under the 50ms/request target — there's room to add real-world complexity before this becomes a bottleneck.
+
 ## API
 
 | Method | Route          | Body                          | Description                                  |
