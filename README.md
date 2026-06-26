@@ -1,0 +1,80 @@
+# UETL Compiler
+
+A Rust compiler that transforms **UETL** (Universal Email Templating Language) — a small, semantic markup language for emails — into cross-client HTML, with a different rendering strategy per email client (Gmail, Outlook Desktop, Outlook 365, Apple Mail, Yahoo Mail, Thunderbird, Samsung Mail).
+
+## Why
+
+Email HTML in 2026 still looks like 1999: nested tables, inline styles, MSO conditional comments, VML hacks for Outlook buttons. [MJML](https://mjml.io) made this more bearable, but its client profiles are hardcoded in the compiler itself, and its governance lives entirely inside one company.
+
+UETL takes the same idea — write semantic components, compile to compatible HTML — but with client capabilities expressed as **data** (JSON profiles) rather than baked into the code. Want to tweak how Outlook 365 handles `position: absolute`? Edit a JSON file, not the Rust source.
+
+```html
+<ue-email lang="en">
+  <ue-layout max-width="600px">
+    <ue-row>
+      <ue-col>
+        <ue-button href="https://example.com" theme="primary">Get started</ue-button>
+      </ue-col>
+    </ue-row>
+  </ue-layout>
+</ue-email>
+```
+
+compiles to a VML `<v:roundrect>` + table fallback for Outlook Desktop, and a plain styled `<table><a>` for everyone else — same source, different output, chosen automatically from the target profile.
+
+## Status
+
+Early but functional: lexer, recursive-descent parser with semantic validation, HTML generator, and an HTTP API all work end-to-end with 44 passing tests. What's missing: a visual/CLI preview tool, more exhaustive cross-client edge cases (dark mode on every component, AMP-style interactivity), and a published crate. Contributions and bug reports on real-world rendering quirks are very welcome.
+
+## Quickstart
+
+```bash
+cargo test            # 44 tests: lexer, parser, profiles, html generator, HTTP API
+cargo run             # serves on :4001
+```
+
+Or with Docker:
+
+```bash
+docker build -t uetl-compiler .
+docker run -p 4001:4001 uetl-compiler
+```
+
+## API
+
+| Method | Route          | Body                          | Description                                  |
+|--------|----------------|--------------------------------|-----------------------------------------------|
+| GET    | `/health`      | —                              | Liveness check                                |
+| GET    | `/profiles`    | —                              | List of available client profile IDs          |
+| POST   | `/validate`    | `{ "uetl": "..." }`            | Parse without compiling; returns errors if any|
+| POST   | `/compile`     | `{ "uetl": "...", "client": "gmail" }` | Compile for one client                |
+| POST   | `/compile/all` | `{ "uetl": "..." }`            | Compile for every known client at once        |
+
+```bash
+curl -X POST localhost:4001/compile \
+  -H 'content-type: application/json' \
+  -d '{"uetl": "<ue-email><ue-layout><ue-row><ue-col><ue-text>Hi</ue-text></ue-col></ue-row></ue-layout></ue-email>", "client": "gmail"}'
+```
+
+## Supported clients
+
+Each client is a JSON profile under `src/profiles/`, describing CSS support (`full` / `partial` / `none`) and quirks (e.g. `vml_support` for Outlook's Word rendering engine). Currently shipped: `gmail`, `outlook_desktop`, `outlook_365`, `apple_mail`, `yahoo_mail`, `thunderbird`, `samsung_mail`.
+
+## Architecture
+
+```
+UETL source
+  → Lexer       (src/lexer)     tokens with line/column tracking
+  → Parser      (src/parser)    AST + semantic validation (e.g. <ue-col> only inside <ue-row>)
+  → HtmlGenerator (src/compiler) per-component rendering strategy, driven by the target Profile
+```
+
+The compiler has no business logic — it receives UETL, returns HTML. No database, no auth, no email sending. It's meant to be called from whatever backend orchestrates contacts, campaigns, and sending.
+
+## Contributing
+
+Bug reports on real client rendering (with the UETL source, target client, and screenshot) are the most valuable contributions right now. PRs adding or correcting a client profile are also very welcome.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

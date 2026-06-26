@@ -1,0 +1,30 @@
+{
+  "id": "outlook_365",
+  "name": "Outlook 365 (Web)",
+  "version": "2024",
+  "supports": {
+    "css_flexbox": "partial",
+    "css_grid": false,
+    "css_variables": false,
+    "css_animations": false,
+    "border_radius": true,
+    "background_image": "partial",
+    "media_queries": true,
+    "dark_mode_media_query": false,
+    "position_absolute": "partial",
+    "margin_auto": true,
+    "padding_shorthand": true,
+    "max_width": true,
+    "min_width": false
+  },
+  "quirks": {
+    "table_layout_required": true,
+    "inline_styles_only": false,
+    "strips_style_tags": false,
+    "vml_support": false,
+    "gmail_class_prefix": false
+  },
+  "button_strategy": "table-cell",
+  "layout_strategy": "table",
+  "image_strategy": "standard"
+}

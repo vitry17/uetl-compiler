@@ -1,0 +1,11 @@
+/target/
+
+# Env / secrets — ce projet n'en utilise pas, mais on bloque par sécurité.
+.env
+.env.*
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db

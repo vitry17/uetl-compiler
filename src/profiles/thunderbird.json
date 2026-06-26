@@ -1,0 +1,30 @@
+{
+  "id": "thunderbird",
+  "name": "Thunderbird",
+  "version": "2024",
+  "supports": {
+    "css_flexbox": true,
+    "css_grid": true,
+    "css_variables": true,
+    "css_animations": true,
+    "border_radius": true,
+    "background_image": true,
+    "media_queries": true,
+    "dark_mode_media_query": true,
+    "position_absolute": true,
+    "margin_auto": true,
+    "padding_shorthand": true,
+    "max_width": true,
+    "min_width": true
+  },
+  "quirks": {
+    "table_layout_required": false,
+    "inline_styles_only": false,
+    "strips_style_tags": false,
+    "vml_support": false,
+    "gmail_class_prefix": false
+  },
+  "button_strategy": "anchor",
+  "layout_strategy": "flexbox",
+  "image_strategy": "standard"
+}

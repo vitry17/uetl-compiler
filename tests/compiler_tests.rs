@@ -1,0 +1,98 @@
+use uetl_compiler::compiler::{HtmlGenerator, ProfileRegistry};
+use uetl_compiler::parser::Parser;
+
+#[test]
+fn button_rendering_differs_between_gmail_and_outlook_desktop() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://example.com">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let gmail_html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+    let outlook_html = HtmlGenerator::generate(&doc, registry.get_profile("outlook_desktop").unwrap());
+
+    assert_ne!(gmail_html, outlook_html);
+    assert!(!gmail_html.contains("v:roundrect"));
+    assert!(outlook_html.contains("v:roundrect"));
+}
+
+#[test]
+fn row_uses_media_queries_only_when_profile_supports_them() {
+    let src = r#"<ue-email><ue-layout><ue-row stack-on="mobile"><ue-col><ue-text>A</ue-text></ue-col><ue-col><ue-text>B</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let gmail_html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+    let outlook_html = HtmlGenerator::generate(&doc, registry.get_profile("outlook_desktop").unwrap());
+
+    assert!(gmail_html.contains("@media"));
+    assert!(!outlook_html.contains("@media"));
+}
+
+#[test]
+fn dark_mode_image_differs_between_apple_mail_and_gmail() {
+    let src = r#"<ue-email dark-mode="auto"><ue-layout><ue-row><ue-col><ue-image src="logo.png" alt="Logo" dark-src="logo-dark.png" /></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let apple_html = HtmlGenerator::generate(&doc, registry.get_profile("apple_mail").unwrap());
+    let gmail_html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+
+    assert!(apple_html.contains("<picture>"));
+    assert!(apple_html.contains("prefers-color-scheme"));
+    assert!(!gmail_html.contains("<picture>"));
+}
+
+#[test]
+fn template_variable_is_preserved_in_output() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-text>Bonjour {{prenom}},</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+
+    assert!(html.contains("{{prenom}}"));
+}
+
+#[test]
+fn raw_content_is_not_escaped_unlike_text_content() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-raw>5 &amp; 6</ue-raw><ue-text>5 &amp; 6</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+
+    assert!(html.contains("5 &amp; 6"));
+    assert!(html.contains("5 &amp;amp; 6"));
+}
+
+const FULL_DOCUMENT: &str = r##"<ue-email lang="fr" dark-mode="auto">
+<ue-layout max-width="600px">
+<ue-row stack-on="mobile">
+<ue-col>
+<ue-heading level="1" color-light="#111111">Titre</ue-heading>
+<ue-text>Bonjour {{prenom}}</ue-text>
+<ue-button href="{{cta_url}}" theme="primary">Voir l'offre</ue-button>
+<ue-image src="logo.png" alt="Logo" dark-src="logo-dark.png" />
+<ue-divider />
+<ue-spacer height="20px" />
+<ue-interactive fallback-src="static.png"></ue-interactive>
+<ue-raw>contenu brut</ue-raw>
+</ue-col>
+</ue-row>
+</ue-layout>
+</ue-email>"##;
+
+#[test]
+fn renders_every_component_on_every_profile_without_panicking() {
+    let doc = Parser::parse_document(FULL_DOCUMENT).unwrap();
+    let registry = ProfileRegistry::load();
+
+    for profile in registry.list_profiles() {
+        let html = HtmlGenerator::generate(&doc, profile);
+        assert!(html.starts_with("<!DOCTYPE html>"), "profile {}", profile.id);
+        assert!(html.contains("{{prenom}}"), "profile {}", profile.id);
+        assert!(html.contains("{{cta_url}}"), "profile {}", profile.id);
+        assert!(html.contains("Titre"), "profile {}", profile.id);
+        assert!(html.contains("contenu brut"), "profile {}", profile.id);
+    }
+}
