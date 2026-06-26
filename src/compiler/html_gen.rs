@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fmt::Write;
 
@@ -11,6 +11,11 @@ pub struct HtmlGenerator<'a> {
     #[allow(dead_code)]
     indent_level: usize,
     next_id: Cell<usize>,
+    /// Règles CSS générées en cours de rendu (media queries de stacking, overrides
+    /// dark-mode...), rassemblées dans un unique `<style>` en `<head>` plutôt que
+    /// dispersées dans le `<body>` — certains clients (Outlook) ignorent les balises
+    /// `<style>` placées hors du `<head>`.
+    style_rules: RefCell<Vec<String>>,
 }
 
 impl<'a> HtmlGenerator<'a> {
@@ -19,6 +24,7 @@ impl<'a> HtmlGenerator<'a> {
             profile,
             indent_level: 0,
             next_id: Cell::new(0),
+            style_rules: RefCell::new(Vec::new()),
         };
         let body = generator.gen_children(&ast.children);
         generator.gen_email(ast, &body)
@@ -28,6 +34,31 @@ impl<'a> HtmlGenerator<'a> {
         let id = self.next_id.get();
         self.next_id.set(id + 1);
         format!("{prefix}-{id}")
+    }
+
+    fn push_style_rule(&self, rule: String) {
+        self.style_rules.borrow_mut().push(rule);
+    }
+
+    /// Si le profil supporte `prefers-color-scheme` et que l'attribut `*-dark` donné
+    /// est présent, enregistre une règle de media query et retourne la classe CSS à
+    /// poser sur l'élément. Sinon, ne fait rien.
+    fn dark_class_for_attr(
+        &self,
+        attrs: &HashMap<String, AttrValue>,
+        attr_name: &str,
+        css_prop: &str,
+    ) -> Option<String> {
+        if !self.profile.supports("dark_mode_media_query").is_supported() {
+            return None;
+        }
+        let value = attr_str(attrs, attr_name)?;
+        let value = normalize_color(&value);
+        let class = self.next_class("ue-dark");
+        self.push_style_rule(format!(
+            "@media (prefers-color-scheme:dark){{.{class}{{{css_prop}:{value} !important;}}}}"
+        ));
+        Some(class)
     }
 
     fn gen_children(&self, children: &[Node]) -> String {
@@ -70,8 +101,15 @@ impl<'a> HtmlGenerator<'a> {
             ""
         };
 
+        let rules = self.style_rules.borrow();
+        let style_tag = if rules.is_empty() {
+            String::new()
+        } else {
+            format!("\n<style>{}</style>", rules.join(""))
+        };
+
         format!(
-            "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{dark_meta}\n</head>\n<body style=\"margin:0;padding:0;\">\n{body}\n</body>\n</html>",
+            "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{dark_meta}{style_tag}\n</head>\n<body style=\"margin:0;padding:0;\">\n{body}\n</body>\n</html>",
             lang = doc.lang,
         )
     }
@@ -82,6 +120,10 @@ impl<'a> HtmlGenerator<'a> {
         let background = attr_str(&el.attrs, "background-light").as_deref().map(normalize_color);
 
         let outer_style = style_attr(&[("background", background)]);
+        let class_attr = self
+            .dark_class_for_attr(&el.attrs, "background-dark", "background")
+            .map(|c| format!(" class=\"{c}\""))
+            .unwrap_or_default();
         let inner_style = style_attr(&[
             ("max-width", Some(max_width)),
             ("margin", Some("0 auto".to_string())),
@@ -91,7 +133,7 @@ impl<'a> HtmlGenerator<'a> {
         let rows = self.gen_children(&el.children);
 
         format!(
-            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{outer_style}><tr><td align=\"center\">\
+            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{class_attr}{outer_style}><tr><td align=\"center\">\
 <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{inner_style}><tr><td{cell_style}>{rows}</td></tr></table>\
 </td></tr></table>"
         )
@@ -117,11 +159,10 @@ impl<'a> HtmlGenerator<'a> {
 
         if stack_on_mobile && media_queries_supported {
             let class = self.next_class("ue-row");
-            let style_block = format!(
-                "<style>@media (max-width:600px){{.{class}{{display:block!important;width:100%!important;}} .{class} .ue-col{{display:block!important;width:100%!important;}}}}</style>"
-            );
-            let body = self.render_row_cells(&cols, gap, background, padding, flexbox_supported, Some(&class));
-            return format!("{style_block}{body}");
+            self.push_style_rule(format!(
+                "@media (max-width:600px){{.{class}{{display:block!important;width:100%!important;}} .{class} .ue-col{{display:block!important;width:100%!important;}}}}"
+            ));
+            return self.render_row_cells(&cols, gap, background, padding, flexbox_supported, Some(&class));
         }
 
         if stack_on_mobile && !media_queries_supported {
@@ -193,8 +234,12 @@ impl<'a> HtmlGenerator<'a> {
         let font_size = attr_str(&el.attrs, "font-size").as_deref().map(css_unit);
         let align = attr_str(&el.attrs, "align");
         let style = style_attr(&[("color", color), ("font-size", font_size), ("text-align", align)]);
+        let class_attr = self
+            .dark_class_for_attr(&el.attrs, "color-dark", "color")
+            .map(|c| format!(" class=\"{c}\""))
+            .unwrap_or_default();
         let content = self.gen_children(&el.children);
-        format!("<h{level}{style}>{content}</h{level}>")
+        format!("<h{level}{class_attr}{style}>{content}</h{level}>")
     }
 
     fn gen_text(&self, el: &ElementNode) -> String {
@@ -206,8 +251,12 @@ impl<'a> HtmlGenerator<'a> {
             ("font-size", font_size),
             ("line-height", line_height),
         ]);
+        let class_attr = self
+            .dark_class_for_attr(&el.attrs, "color-dark", "color")
+            .map(|c| format!(" class=\"{c}\""))
+            .unwrap_or_default();
         let content = self.gen_children(&el.children);
-        format!("<p{style}>{content}</p>")
+        format!("<p{class_attr}{style}>{content}</p>")
     }
 
     fn gen_button(&self, el: &ElementNode) -> String {
