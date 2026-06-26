@@ -24,12 +24,12 @@ compiles to a VML `<v:roundrect>` + table fallback for Outlook Desktop, and a pl
 
 ## Status
 
-Early but functional: lexer, recursive-descent parser with semantic validation, HTML generator, and an HTTP API all work end-to-end with 44 passing tests. What's missing: a visual/CLI preview tool, more exhaustive cross-client edge cases (dark mode on every component, AMP-style interactivity), and a published crate. Contributions and bug reports on real-world rendering quirks are very welcome.
+Early but functional: lexer, recursive-descent parser with semantic validation, HTML generator, and an HTTP API all work end-to-end with 50 passing tests. Dark mode is supported on headings, text, layout backgrounds, and images. What's missing: a CLI/visual preview tool, AMP-style interactivity, and a published crate. Contributions and bug reports on real-world rendering quirks are very welcome.
 
 ## Quickstart
 
 ```bash
-cargo test            # 44 tests: lexer, parser, profiles, html generator, HTTP API
+cargo test            # 50 tests: lexer, parser, profiles, html generator, HTTP API
 cargo run             # serves on :4001
 ```
 
@@ -75,6 +75,33 @@ curl -X POST localhost:4001/compile \
 ## Supported clients
 
 Each client is a JSON profile under `src/profiles/`, describing CSS support (`full` / `partial` / `none`) and quirks (e.g. `vml_support` for Outlook's Word rendering engine). Currently shipped: `gmail`, `outlook_desktop`, `outlook_365`, `apple_mail`, `yahoo_mail`, `thunderbird`, `samsung_mail`.
+
+## Components
+
+| Tag             | Required attrs | Key optional attrs                                  |
+|-----------------|-----------------|-------------------------------------------------------|
+| `<ue-email>`    | —               | `lang`, `dark-mode="auto"`                            |
+| `<ue-layout>`   | —               | `max-width`, `background-light`/`background-dark`, `padding` |
+| `<ue-row>`      | —               | `stack-on="mobile"`, `gap`, `background`, `padding`   |
+| `<ue-col>`      | —               | — (groups content inside a `<ue-row>`)                |
+| `<ue-heading>`  | `level` (1–6)   | `color-light`/`color-dark`, `font-size`, `align`      |
+| `<ue-text>`     | —               | `color-light`/`color-dark`, `font-size`, `line-height`|
+| `<ue-button>`   | `href`          | `theme`, `accessible-label`                           |
+| `<ue-image>`    | `src`, `alt`    | `width`, `height`, `dark-src`                         |
+| `<ue-divider>`  | —               | `color`, `thickness`, `margin`                        |
+| `<ue-spacer>`   | —               | `height` (default `20px`)                             |
+| `<ue-raw>`      | —               | embeds literal HTML untouched (escape hatch)           |
+
+Any attribute value can be a template token, e.g. `href="{{cta_url}}"` — it's preserved as-is in the compiled output for the calling backend to substitute.
+
+## Compared to MJML
+
+| | MJML | UETL Compiler |
+|---|---|---|
+| Output | One HTML for all clients | Per-client optimized HTML |
+| Client capabilities | Hardcoded in the compiler | JSON profiles, editable without touching Rust |
+| Dark mode | Manual media queries | `color-dark`/`background-dark` attrs, compiled automatically |
+| Governance | Mailgun (private company) | Open, MIT |
 
 ## Architecture
 
