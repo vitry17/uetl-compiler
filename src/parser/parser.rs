@@ -154,7 +154,6 @@ impl Parser {
             Token::TagOpen(name) => name,
             other => return Err(self.unexpected("a tag", other)),
         };
-        self.bump()?;
 
         let tag = UetlTag::from_name(&name).ok_or_else(|| ParseError::UnknownTag {
             tag: name.clone(),
@@ -172,6 +171,13 @@ impl Parser {
                 });
             }
         }
+
+        // Doit être armé avant de consommer le `>` de la balise ouvrante (le bump()
+        // suivant), sans quoi le lexer aurait déjà tenté de tokeniser le contenu brut.
+        if tag == UetlTag::Raw {
+            self.scanner.enter_raw_mode(&name);
+        }
+        self.bump()?;
 
         let mut attrs = HashMap::new();
         while let Token::AttrName(attr_name) = self.current.clone() {

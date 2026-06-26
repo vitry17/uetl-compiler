@@ -43,6 +43,35 @@ fn dark_mode_image_differs_between_apple_mail_and_gmail() {
 }
 
 #[test]
+fn dark_mode_overrides_heading_text_and_layout_colors_when_supported() {
+    let src = r##"<ue-email dark-mode="auto"><ue-layout background-light="#ffffff" background-dark="#1a1a2e"><ue-row><ue-col><ue-heading level="1" color-light="#111111" color-dark="#eeeeee">Titre</ue-heading><ue-text color-light="#333333" color-dark="#cccccc">Texte</ue-text></ue-col></ue-row></ue-layout></ue-email>"##;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let apple_html = HtmlGenerator::generate(&doc, registry.get_profile("apple_mail").unwrap());
+    let gmail_html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+
+    assert!(apple_html.contains("prefers-color-scheme:dark"));
+    assert!(apple_html.contains("#eeeeee"));
+    assert!(apple_html.contains("#cccccc"));
+    assert!(apple_html.contains("#1a1a2e"));
+    assert!(!gmail_html.contains("prefers-color-scheme:dark"));
+}
+
+#[test]
+fn generated_style_rules_live_in_head_not_scattered_in_body() {
+    let src = r#"<ue-email><ue-layout><ue-row stack-on="mobile"><ue-col><ue-text>A</ue-text></ue-col><ue-col><ue-text>B</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+
+    let head_end = html.find("</head>").expect("missing </head>");
+    let style_pos = html.find("<style>").expect("missing <style> block");
+    assert!(style_pos < head_end, "style block must live inside <head>");
+}
+
+#[test]
 fn template_variable_is_preserved_in_output() {
     let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-text>Bonjour {{prenom}},</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
     let doc = Parser::parse_document(src).unwrap();
@@ -65,11 +94,34 @@ fn raw_content_is_not_escaped_unlike_text_content() {
     assert!(html.contains("5 &amp;amp; 6"));
 }
 
+#[test]
+fn raw_block_passes_through_literal_html_tags() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-raw><div class="custom"><b>bold</b></div></ue-raw><ue-text>after</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+
+    assert!(html.contains(r#"<div class="custom"><b>bold</b></div>"#));
+    assert!(html.contains("<p>after</p>"));
+}
+
+#[test]
+fn self_closing_raw_block_has_no_content() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-raw /><ue-text>after</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+
+    assert!(html.contains("<p>after</p>"));
+}
+
 const FULL_DOCUMENT: &str = r##"<ue-email lang="fr" dark-mode="auto">
-<ue-layout max-width="600px">
+<ue-layout max-width="600px" background-light="#ffffff" background-dark="#1a1a2e">
 <ue-row stack-on="mobile">
 <ue-col>
-<ue-heading level="1" color-light="#111111">Titre</ue-heading>
+<ue-heading level="1" color-light="#111111" color-dark="#eeeeee">Titre</ue-heading>
 <ue-text>Bonjour {{prenom}}</ue-text>
 <ue-button href="{{cta_url}}" theme="primary">Voir l'offre</ue-button>
 <ue-image src="logo.png" alt="Logo" dark-src="logo-dark.png" />

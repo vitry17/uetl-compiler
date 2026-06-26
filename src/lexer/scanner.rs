@@ -24,6 +24,10 @@ pub struct Scanner {
     column: usize,
     in_tag: bool,
     pending_attr_value: bool,
+    /// Quand renseigné, le contenu jusqu'à la prochaine balise fermante portant ce nom
+    /// est capturé tel quel (un seul `Token::Text`), sans être tokenisé. Permet à
+    /// `<ue-raw>` d'embarquer du HTML littéral sans que le lexer s'y casse les dents.
+    raw_mode: Option<String>,
 }
 
 impl Scanner {
@@ -35,6 +39,7 @@ impl Scanner {
             column: 1,
             in_tag: false,
             pending_attr_value: false,
+            raw_mode: None,
         }
     }
 
@@ -44,6 +49,12 @@ impl Scanner {
 
     pub fn column(&self) -> usize {
         self.column
+    }
+
+    /// À appeler juste après avoir vu `Token::TagOpen(name)` pour une balise dont le
+    /// contenu doit être lu tel quel (ex: `ue-raw`), avant de consommer ses attributs.
+    pub fn enter_raw_mode(&mut self, closing_tag: &str) {
+        self.raw_mode = Some(closing_tag.to_string());
     }
 
     pub fn next_token(&mut self) -> Result<Token, LexError> {
@@ -72,15 +83,36 @@ impl Scanner {
                 self.advance();
                 self.advance();
                 self.in_tag = false;
+                self.raw_mode = None;
                 Ok(Token::SelfClose)
             }
             Some('>') => {
                 self.advance();
                 self.in_tag = false;
-                self.next_token()
+                match self.raw_mode.take() {
+                    Some(closing_tag) => self.read_raw_text(&closing_tag),
+                    None => self.next_token(),
+                }
             }
             Some(c) if is_name_start(c) => self.read_attr_name(),
             Some(c) => Err(self.error(format!("unexpected character '{c}' in tag"))),
+        }
+    }
+
+    /// Capture tout le texte jusqu'à (sans la consommer) la prochaine occurrence de
+    /// `</closing_tag`, sans interpréter quoi que ce soit entre les deux.
+    fn read_raw_text(&mut self, closing_tag: &str) -> Result<Token, LexError> {
+        let start = self.error("unterminated raw block");
+        let closer = format!("</{closing_tag}");
+        let mut content = String::new();
+        loop {
+            if self.starts_with(&closer) {
+                return Ok(Token::Text(content));
+            }
+            match self.advance() {
+                Some(c) => content.push(c),
+                None => return Err(start),
+            }
         }
     }
 
@@ -250,5 +282,43 @@ impl Scanner {
             }
         }
         Ok(Token::Text(text))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raw_mode_captures_literal_tags_without_tokenizing_them() {
+        let mut scanner = Scanner::new("<ue-raw><div>hi</div></ue-raw>");
+        assert_eq!(
+            scanner.next_token().unwrap(),
+            Token::TagOpen("ue-raw".into())
+        );
+        scanner.enter_raw_mode("ue-raw");
+        assert_eq!(
+            scanner.next_token().unwrap(),
+            Token::Text("<div>hi</div>".into())
+        );
+        assert_eq!(
+            scanner.next_token().unwrap(),
+            Token::TagClose("ue-raw".into())
+        );
+    }
+
+    #[test]
+    fn raw_mode_is_cleared_by_a_self_closing_tag() {
+        let mut scanner = Scanner::new("<ue-raw /><ue-text>after</ue-text>");
+        assert_eq!(
+            scanner.next_token().unwrap(),
+            Token::TagOpen("ue-raw".into())
+        );
+        scanner.enter_raw_mode("ue-raw");
+        assert_eq!(scanner.next_token().unwrap(), Token::SelfClose);
+        assert_eq!(
+            scanner.next_token().unwrap(),
+            Token::TagOpen("ue-text".into())
+        );
     }
 }
