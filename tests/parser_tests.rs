@@ -112,6 +112,19 @@ fn divider_and_spacer_are_valid_directly_under_layout() {
 }
 
 #[test]
+fn tolerates_a_trailing_newline_after_the_root_closes() {
+    // Coller un document dans un éditeur de texte (Monaco y compris) laisse
+    // quasi-systématiquement un saut de ligne final après `</ue-email>` —
+    // un vrai document utilisateur a déclenché "expected end of input" sur
+    // ce seul caractère avant ce correctif.
+    let src = "<ue-email><ue-layout><ue-row><ue-col><ue-text>Bonjour</ue-text></ue-col></ue-row></ue-layout></ue-email>\n";
+    Parser::parse_document(src).unwrap();
+
+    let with_blank_lines = "<ue-email><ue-layout><ue-row><ue-col><ue-text>Bonjour</ue-text></ue-col></ue-row></ue-layout></ue-email>\n\n  \n";
+    Parser::parse_document(with_blank_lines).unwrap();
+}
+
+#[test]
 fn errors_when_root_is_not_ue_email() {
     let src = r#"<ue-layout></ue-layout>"#;
     let err = Parser::parse_document(src).unwrap_err();
