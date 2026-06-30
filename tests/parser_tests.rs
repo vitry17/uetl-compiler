@@ -93,6 +93,25 @@ fn parses_deeply_nested_rows_and_cols() {
 }
 
 #[test]
+fn divider_and_spacer_are_valid_directly_under_layout() {
+    // Cas réel : un séparateur pleine largeur entre deux sections, hors
+    // colonne — la place la plus naturelle pour ce composant.
+    let src = r##"<ue-email>
+        <ue-layout>
+            <ue-row><ue-col><ue-text>Haut</ue-text></ue-col></ue-row>
+            <ue-divider color="#eeeeee" thickness="1px" margin="20px 0" />
+            <ue-spacer height="10px" />
+            <ue-row><ue-col><ue-text>Bas</ue-text></ue-col></ue-row>
+        </ue-layout>
+    </ue-email>"##;
+
+    let doc = Parser::parse_document(src).unwrap();
+
+    assert!(doc.children.iter().any(|c| find_element(c, UetlTag::Divider).is_some()));
+    assert!(doc.children.iter().any(|c| find_element(c, UetlTag::Spacer).is_some()));
+}
+
+#[test]
 fn errors_when_root_is_not_ue_email() {
     let src = r#"<ue-layout></ue-layout>"#;
     let err = Parser::parse_document(src).unwrap_err();
