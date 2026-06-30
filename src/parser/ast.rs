@@ -89,12 +89,19 @@ impl UetlTag {
     }
 
     /// Validation sémantique : `<ue-col>` n'est valide que sous `<ue-row>`, etc.
+    ///
+    /// `Divider`/`Spacer` sont acceptés à la fois sous `Layout` (séparateur
+    /// ou espacement pleine largeur entre deux sections, l'usage le plus
+    /// courant) et sous `Col` (séparateur localisé à une colonne) : les deux
+    /// génèrent un fragment autonome (`<hr>` / `<table>` de remplissage)
+    /// simplement concaténé par `gen_layout`/`gen_col`, donc aucune
+    /// structure de tableau ne dépend de l'endroit où ils apparaissent.
     pub fn allows_child(&self, child: Self) -> bool {
         use UetlTag::*;
         matches!(
             (self, child),
             (Email, Layout)
-                | (Layout, Row)
+                | (Layout, Row | Divider | Spacer)
                 | (Row, Col)
                 | (
                     Col,
