@@ -40,10 +40,34 @@ impl<'a> HtmlGenerator<'a> {
         self.style_rules.borrow_mut().push(rule);
     }
 
+    /// Attributs dark-mode à poser sur l'élément, combinant les deux
+    /// mécanismes pilotés par l'auteur (indépendants — un profil peut
+    /// supporter l'un, l'autre, les deux ou aucun) :
+    /// - classe CSS + `@media (prefers-color-scheme:dark)`, pour les clients
+    ///   qui exposent réellement ce media query au contenu (`dark_mode_media_query`) ;
+    /// - `data-ogsc`/`data-ogsb`, propriétaire Yahoo/AOL Mail (`dark_mode_data_attributes`) :
+    ///   ce n'est pas un sélecteur CSS, leur moteur de rendu remplace lui-même
+    ///   la couleur affichée par la valeur de cet attribut quand l'utilisateur
+    ///   est en mode sombre — ignoré sans effet par tout autre client.
+    fn dark_mode_attrs(&self, attrs: &HashMap<String, AttrValue>, attr_name: &str, css_prop: &str) -> String {
+        let mut out = String::new();
+
+        if let Some(class) = self.dark_media_class_for_attr(attrs, attr_name, css_prop) {
+            let _ = write!(out, " class=\"{class}\"");
+        }
+
+        if let Some(data_attr) = self.dark_data_attr_for(attrs, attr_name, css_prop) {
+            out.push(' ');
+            out.push_str(&data_attr);
+        }
+
+        out
+    }
+
     /// Si le profil supporte `prefers-color-scheme` et que l'attribut `*-dark` donné
     /// est présent, enregistre une règle de media query et retourne la classe CSS à
     /// poser sur l'élément. Sinon, ne fait rien.
-    fn dark_class_for_attr(
+    fn dark_media_class_for_attr(
         &self,
         attrs: &HashMap<String, AttrValue>,
         attr_name: &str,
@@ -59,6 +83,20 @@ impl<'a> HtmlGenerator<'a> {
             "@media (prefers-color-scheme:dark){{.{class}{{{css_prop}:{value} !important;}}}}"
         ));
         Some(class)
+    }
+
+    fn dark_data_attr_for(&self, attrs: &HashMap<String, AttrValue>, attr_name: &str, css_prop: &str) -> Option<String> {
+        if !self.profile.quirk("dark_mode_data_attributes") {
+            return None;
+        }
+        let data_attr_name = match css_prop {
+            "color" => "data-ogsc",
+            "background" => "data-ogsb",
+            _ => return None,
+        };
+        let value = attr_str(attrs, attr_name)?;
+        let value = normalize_color(&value);
+        Some(format!("{data_attr_name}=\"{value}\""))
     }
 
     fn gen_children(&self, children: &[Node]) -> String {
@@ -120,10 +158,7 @@ impl<'a> HtmlGenerator<'a> {
         let background = attr_str(&el.attrs, "background-light").as_deref().map(normalize_color);
 
         let outer_style = style_attr(&[("background", background)]);
-        let class_attr = self
-            .dark_class_for_attr(&el.attrs, "background-dark", "background")
-            .map(|c| format!(" class=\"{c}\""))
-            .unwrap_or_default();
+        let class_attr = self.dark_mode_attrs(&el.attrs, "background-dark", "background");
         let inner_style = style_attr(&[
             ("max-width", Some(max_width)),
             ("margin", Some("0 auto".to_string())),
@@ -234,10 +269,7 @@ impl<'a> HtmlGenerator<'a> {
         let font_size = attr_str(&el.attrs, "font-size").as_deref().map(css_unit);
         let align = attr_str(&el.attrs, "align");
         let style = style_attr(&[("color", color), ("font-size", font_size), ("text-align", align)]);
-        let class_attr = self
-            .dark_class_for_attr(&el.attrs, "color-dark", "color")
-            .map(|c| format!(" class=\"{c}\""))
-            .unwrap_or_default();
+        let class_attr = self.dark_mode_attrs(&el.attrs, "color-dark", "color");
         let content = self.gen_children(&el.children);
         format!("<h{level}{class_attr}{style}>{content}</h{level}>")
     }
@@ -251,10 +283,7 @@ impl<'a> HtmlGenerator<'a> {
             ("font-size", font_size),
             ("line-height", line_height),
         ]);
-        let class_attr = self
-            .dark_class_for_attr(&el.attrs, "color-dark", "color")
-            .map(|c| format!(" class=\"{c}\""))
-            .unwrap_or_default();
+        let class_attr = self.dark_mode_attrs(&el.attrs, "color-dark", "color");
         let content = self.gen_children(&el.children);
         format!("<p{class_attr}{style}>{content}</p>")
     }

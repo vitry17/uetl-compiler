@@ -22,7 +22,8 @@
     "inline_styles_only": false,
     "strips_style_tags": false,
     "vml_support": false,
-    "gmail_class_prefix": false
+    "gmail_class_prefix": false,
+    "dark_mode_data_attributes": true
   },
   "button_strategy": "table-cell",
   "layout_strategy": "table",

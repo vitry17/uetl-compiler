@@ -59,6 +59,22 @@ fn dark_mode_overrides_heading_text_and_layout_colors_when_supported() {
 }
 
 #[test]
+fn yahoo_mail_gets_data_ogsc_ogsb_instead_of_a_media_query() {
+    // Yahoo/AOL ne supportent pas prefers-color-scheme dans le contenu d'un
+    // mail, mais lisent eux-mêmes ces attributs propriétaires pour basculer
+    // la couleur affichée en mode sombre — voir Profile::quirk("dark_mode_data_attributes").
+    let src = r##"<ue-email dark-mode="auto"><ue-layout background-light="#ffffff" background-dark="#1a1a2e"><ue-row><ue-col><ue-heading level="1" color-light="#111111" color-dark="#eeeeee">Titre</ue-heading></ue-col></ue-row></ue-layout></ue-email>"##;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let yahoo_html = HtmlGenerator::generate(&doc, registry.get_profile("yahoo_mail").unwrap());
+
+    assert!(!yahoo_html.contains("prefers-color-scheme"));
+    assert!(yahoo_html.contains("data-ogsb=\"#1a1a2e\""));
+    assert!(yahoo_html.contains("data-ogsc=\"#eeeeee\""));
+}
+
+#[test]
 fn generated_style_rules_live_in_head_not_scattered_in_body() {
     let src = r#"<ue-email><ue-layout><ue-row stack-on="mobile"><ue-col><ue-text>A</ue-text></ue-col><ue-col><ue-text>B</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
     let doc = Parser::parse_document(src).unwrap();
