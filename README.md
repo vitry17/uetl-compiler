@@ -26,6 +26,14 @@ compiles to a VML `<v:roundrect>` + table fallback for Outlook Desktop, and a pl
 
 Early but functional: lexer, recursive-descent parser with semantic validation, HTML generator, and an HTTP API all work end-to-end with 50 passing tests. Dark mode is supported on headings, text, layout backgrounds, and images. What's missing: a CLI/visual preview tool, AMP-style interactivity, and a published crate. Contributions and bug reports on real-world rendering quirks are very welcome.
 
+## Language reference
+
+**[docs/LANGUAGE.md](docs/LANGUAGE.md)** — the twelve tags, the hierarchy the
+parser enforces, required attributes, and the exact error messages. Worth
+reading before writing a template by hand, and worth pointing any code
+generator at: without it, a plausible-looking `<uetl>` or `<div>` gets written
+and rejected.
+
 ## Quickstart
 
 ```bash
@@ -101,7 +109,7 @@ Any attribute value can be a template token, e.g. `href="{{cta_url}}"` — it's 
 | Output | One HTML for all clients | Per-client optimized HTML |
 | Client capabilities | Hardcoded in the compiler | JSON profiles, editable without touching Rust |
 | Dark mode | Manual media queries | `color-dark`/`background-dark` attrs, compiled automatically |
-| Governance | Mailgun (private company) | Open, MIT |
+| Governance | Mailgun (private company) | Source-available (BSL 1.1 → Apache 2.0 in 2030) |
 
 ## Architecture
 
@@ -120,4 +128,4 @@ Bug reports on real client rendering (with the UETL source, target client, and s
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[Business Source License 1.1](LICENSE) — free to read, modify, and use for any purpose, including internal commercial use. The only thing it restricts is reselling or hosting the compiler's functionality as a competing service to third parties; that requires a commercial license from the Licensor. On 2030-06-30, this license automatically converts to Apache License 2.0 and the project becomes fully open source with no restrictions.

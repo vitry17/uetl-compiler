@@ -16,6 +16,65 @@ fn button_rendering_differs_between_gmail_and_outlook_desktop() {
 }
 
 #[test]
+fn button_background_and_color_override_the_theme_preset() {
+    // r##"..."## et non r#"..."# : la sequence `"#` d'un attribut de couleur
+    // fermerait la chaine brute en plein milieu.
+    let src = r##"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://example.com" background="#00AFF5" color="#05073B">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"##;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    for profile in ["gmail", "outlook_desktop"] {
+        let html = HtmlGenerator::generate(&doc, registry.get_profile(profile).unwrap());
+
+        assert!(html.contains("#00AFF5"), "{profile}: brand background missing");
+        assert!(html.contains("#05073B"), "{profile}: brand text colour missing");
+        // Le preset ne doit plus apparaitre une fois surcharge.
+        assert!(!html.contains("#2E5FAC"), "{profile}: theme preset still applied");
+    }
+}
+
+#[test]
+fn dark_src_uses_a_class_toggle_not_a_picture_element() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-image src="light.png" dark-src="dark.png" alt="Logo" /></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    // apple_mail et non gmail : Gmail declare ne pas supporter
+    // prefers-color-scheme, il n'a donc jamais de variante sombre.
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("apple_mail").unwrap());
+
+    // <picture> est supprime par Gmail et ignore par Outlook : la variante
+    // sombre ne serait jamais affichee.
+    assert!(!html.contains("<picture"), "picture element still emitted");
+    assert!(html.contains("light.png"));
+    assert!(html.contains("dark.png"));
+    assert!(html.contains("prefers-color-scheme:dark"));
+    // Outlook ne comprend pas les media queries et afficherait les deux images.
+    assert!(html.contains("mso-hide:all"));
+}
+
+#[test]
+fn image_without_dark_src_stays_a_plain_img() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-image src="light.png" alt="Logo" /></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+    assert!(html.contains("light.png"));
+    assert!(!html.contains("mso-hide"));
+}
+
+#[test]
+fn button_falls_back_to_the_theme_preset_without_explicit_colours() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://example.com" theme="danger">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+    assert!(html.contains("#d9534f"));
+}
+
+#[test]
 fn row_uses_media_queries_only_when_profile_supports_them() {
     let src = r#"<ue-email><ue-layout><ue-row stack-on="mobile"><ue-col><ue-text>A</ue-text></ue-col><ue-col><ue-text>B</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
     let doc = Parser::parse_document(src).unwrap();
@@ -37,9 +96,15 @@ fn dark_mode_image_differs_between_apple_mail_and_gmail() {
     let apple_html = HtmlGenerator::generate(&doc, registry.get_profile("apple_mail").unwrap());
     let gmail_html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
 
-    assert!(apple_html.contains("<picture>"));
+    // La variante sombre passe par une bascule de classe, plus par <picture> :
+    // cette balise est supprimee par Gmail et ignoree par Outlook, la variante
+    // n'etait donc jamais affichee.
+    assert!(!apple_html.contains("<picture>"));
+    assert!(apple_html.contains("logo-dark.png"));
     assert!(apple_html.contains("prefers-color-scheme"));
-    assert!(!gmail_html.contains("<picture>"));
+
+    // Gmail ne declare pas supporter prefers-color-scheme : aucune variante.
+    assert!(!gmail_html.contains("logo-dark.png"));
 }
 
 #[test]
@@ -56,6 +121,22 @@ fn dark_mode_overrides_heading_text_and_layout_colors_when_supported() {
     assert!(apple_html.contains("#cccccc"));
     assert!(apple_html.contains("#1a1a2e"));
     assert!(!gmail_html.contains("prefers-color-scheme:dark"));
+}
+
+#[test]
+fn yahoo_mail_gets_data_ogsc_ogsb_instead_of_a_media_query() {
+    // Yahoo/AOL ne supportent pas prefers-color-scheme dans le contenu d'un
+    // mail, mais lisent eux-mêmes ces attributs propriétaires pour basculer
+    // la couleur affichée en mode sombre — voir Profile::quirk("dark_mode_data_attributes").
+    let src = r##"<ue-email dark-mode="auto"><ue-layout background-light="#ffffff" background-dark="#1a1a2e"><ue-row><ue-col><ue-heading level="1" color-light="#111111" color-dark="#eeeeee">Titre</ue-heading></ue-col></ue-row></ue-layout></ue-email>"##;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let yahoo_html = HtmlGenerator::generate(&doc, registry.get_profile("yahoo_mail").unwrap());
+
+    assert!(!yahoo_html.contains("prefers-color-scheme"));
+    assert!(yahoo_html.contains("data-ogsb=\"#1a1a2e\""));
+    assert!(yahoo_html.contains("data-ogsc=\"#eeeeee\""));
 }
 
 #[test]

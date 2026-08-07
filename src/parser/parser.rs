@@ -93,6 +93,17 @@ impl Parser {
             });
         }
 
+        // Un saut de ligne final après `</ue-email>` est l'usage normal de
+        // tout éditeur de texte (Monaco y compris) — sans cette tolérance,
+        // coller un document dans l'éditeur produisait systématiquement
+        // une erreur "expected end of input" sur ce seul retour à la ligne
+        // de fin de fichier, alors que le document est par ailleurs valide.
+        while matches!(&parser.current, Token::Text(text) if text.trim().is_empty())
+            || matches!(parser.current, Token::Comment)
+        {
+            parser.bump()?;
+        }
+
         if !matches!(parser.current, Token::Eof) {
             return Err(parser.unexpected("end of input", parser.current.clone()));
         }

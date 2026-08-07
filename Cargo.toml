@@ -2,7 +2,7 @@
 name = "uetl-compiler"
 version = "0.1.0"
 edition = "2021"
-license = "MIT"
+license-file = "LICENSE"
 description = "Compiler that transforms UETL (Universal Email Templating Language) into cross-client HTML"
 repository = "https://github.com/vitry17/uetl-compiler"
 
@@ -14,7 +14,7 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 thiserror = "1"
-tower-http = { version = "0.5", features = ["cors", "trace", "timeout"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "timeout", "compression-gzip"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

@@ -40,10 +40,34 @@ impl<'a> HtmlGenerator<'a> {
         self.style_rules.borrow_mut().push(rule);
     }
 
+    /// Attributs dark-mode à poser sur l'élément, combinant les deux
+    /// mécanismes pilotés par l'auteur (indépendants — un profil peut
+    /// supporter l'un, l'autre, les deux ou aucun) :
+    /// - classe CSS + `@media (prefers-color-scheme:dark)`, pour les clients
+    ///   qui exposent réellement ce media query au contenu (`dark_mode_media_query`) ;
+    /// - `data-ogsc`/`data-ogsb`, propriétaire Yahoo/AOL Mail (`dark_mode_data_attributes`) :
+    ///   ce n'est pas un sélecteur CSS, leur moteur de rendu remplace lui-même
+    ///   la couleur affichée par la valeur de cet attribut quand l'utilisateur
+    ///   est en mode sombre — ignoré sans effet par tout autre client.
+    fn dark_mode_attrs(&self, attrs: &HashMap<String, AttrValue>, attr_name: &str, css_prop: &str) -> String {
+        let mut out = String::new();
+
+        if let Some(class) = self.dark_media_class_for_attr(attrs, attr_name, css_prop) {
+            let _ = write!(out, " class=\"{class}\"");
+        }
+
+        if let Some(data_attr) = self.dark_data_attr_for(attrs, attr_name, css_prop) {
+            out.push(' ');
+            out.push_str(&data_attr);
+        }
+
+        out
+    }
+
     /// Si le profil supporte `prefers-color-scheme` et que l'attribut `*-dark` donné
     /// est présent, enregistre une règle de media query et retourne la classe CSS à
     /// poser sur l'élément. Sinon, ne fait rien.
-    fn dark_class_for_attr(
+    fn dark_media_class_for_attr(
         &self,
         attrs: &HashMap<String, AttrValue>,
         attr_name: &str,
@@ -59,6 +83,20 @@ impl<'a> HtmlGenerator<'a> {
             "@media (prefers-color-scheme:dark){{.{class}{{{css_prop}:{value} !important;}}}}"
         ));
         Some(class)
+    }
+
+    fn dark_data_attr_for(&self, attrs: &HashMap<String, AttrValue>, attr_name: &str, css_prop: &str) -> Option<String> {
+        if !self.profile.quirk("dark_mode_data_attributes") {
+            return None;
+        }
+        let data_attr_name = match css_prop {
+            "color" => "data-ogsc",
+            "background" => "data-ogsb",
+            _ => return None,
+        };
+        let value = attr_str(attrs, attr_name)?;
+        let value = normalize_color(&value);
+        Some(format!("{data_attr_name}=\"{value}\""))
     }
 
     fn gen_children(&self, children: &[Node]) -> String {
@@ -120,10 +158,7 @@ impl<'a> HtmlGenerator<'a> {
         let background = attr_str(&el.attrs, "background-light").as_deref().map(normalize_color);
 
         let outer_style = style_attr(&[("background", background)]);
-        let class_attr = self
-            .dark_class_for_attr(&el.attrs, "background-dark", "background")
-            .map(|c| format!(" class=\"{c}\""))
-            .unwrap_or_default();
+        let class_attr = self.dark_mode_attrs(&el.attrs, "background-dark", "background");
         let inner_style = style_attr(&[
             ("max-width", Some(max_width)),
             ("margin", Some("0 auto".to_string())),
@@ -234,10 +269,7 @@ impl<'a> HtmlGenerator<'a> {
         let font_size = attr_str(&el.attrs, "font-size").as_deref().map(css_unit);
         let align = attr_str(&el.attrs, "align");
         let style = style_attr(&[("color", color), ("font-size", font_size), ("text-align", align)]);
-        let class_attr = self
-            .dark_class_for_attr(&el.attrs, "color-dark", "color")
-            .map(|c| format!(" class=\"{c}\""))
-            .unwrap_or_default();
+        let class_attr = self.dark_mode_attrs(&el.attrs, "color-dark", "color");
         let content = self.gen_children(&el.children);
         format!("<h{level}{class_attr}{style}>{content}</h{level}>")
     }
@@ -251,10 +283,7 @@ impl<'a> HtmlGenerator<'a> {
             ("font-size", font_size),
             ("line-height", line_height),
         ]);
-        let class_attr = self
-            .dark_class_for_attr(&el.attrs, "color-dark", "color")
-            .map(|c| format!(" class=\"{c}\""))
-            .unwrap_or_default();
+        let class_attr = self.dark_mode_attrs(&el.attrs, "color-dark", "color");
         let content = self.gen_children(&el.children);
         format!("<p{class_attr}{style}>{content}</p>")
     }
@@ -263,7 +292,21 @@ impl<'a> HtmlGenerator<'a> {
         let href = attr_str(&el.attrs, "href").unwrap_or_default();
         let label = self.gen_children(&el.children);
         let accessible_label = attr_str(&el.attrs, "accessible-label");
-        let (background, color) = theme_colors(attr_str(&el.attrs, "theme").as_deref());
+
+        // `theme` fournit un preset; `background` et `color` le surchargent.
+        // Sans cette surcharge un bouton ne pouvait porter que l'une des trois
+        // couleurs codees en dur, ce qui rendait toute charte graphique
+        // inapplicable a l'element le plus charge en identite d'un email.
+        let (theme_background, theme_color) =
+            theme_colors(attr_str(&el.attrs, "theme").as_deref());
+        let background = attr_str(&el.attrs, "background")
+            .as_deref()
+            .map(normalize_color)
+            .unwrap_or(theme_background);
+        let color = attr_str(&el.attrs, "color")
+            .as_deref()
+            .map(normalize_color)
+            .unwrap_or(theme_color);
         let aria = accessible_label
             .map(|l| format!(" aria-label=\"{}\"", html_escape(&l)))
             .unwrap_or_default();
@@ -300,9 +343,28 @@ impl<'a> HtmlGenerator<'a> {
 
         if let Some(dark_src) = dark_src {
             if self.profile.supports("dark_mode_media_query").is_supported() {
+                // Deux images superposees, basculees par media query, plutot que
+                // <picture> : Gmail supprime purement et simplement cette balise
+                // et Outlook l'ignore, de sorte que la variante sombre n'etait
+                // jamais utilisee. La bascule par classe est la technique
+                // reellement supportee en email, et c'est deja celle qu'utilise
+                // dark_media_class_for_attr pour les couleurs.
+                let light_class = self.next_class("ue-dark");
+                let dark_class = self.next_class("ue-dark");
+
+                self.push_style_rule(format!(
+                    "@media (prefers-color-scheme:dark){{\
+.{light_class}{{display:none !important;}}\
+.{dark_class}{{display:inline-block !important;}}}}"
+                ));
+
+                // mso-hide masque la variante sombre dans Outlook, qui ne
+                // comprend pas les media queries et afficherait les deux.
                 return format!(
-                    "<picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"{dark_src}\">\
-<img src=\"{src}\" alt=\"{alt}\"{width_attr}{style} /></picture>"
+                    "<span class=\"{light_class}\">\
+<img src=\"{src}\" alt=\"{alt}\"{width_attr}{style} /></span>\
+<span class=\"{dark_class}\" style=\"display:none;mso-hide:all;\">\
+<img src=\"{dark_src}\" alt=\"{alt}\"{width_attr}{style} /></span>"
                 );
             }
         }
