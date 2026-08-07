@@ -39,16 +39,18 @@ fn dark_src_uses_a_class_toggle_not_a_picture_element() {
     let doc = Parser::parse_document(src).unwrap();
     let registry = ProfileRegistry::load();
 
-    let gmail_html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+    // apple_mail et non gmail : Gmail declare ne pas supporter
+    // prefers-color-scheme, il n'a donc jamais de variante sombre.
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("apple_mail").unwrap());
 
     // <picture> est supprime par Gmail et ignore par Outlook : la variante
     // sombre ne serait jamais affichee.
-    assert!(!gmail_html.contains("<picture"), "picture element still emitted");
-    assert!(gmail_html.contains("light.png"));
-    assert!(gmail_html.contains("dark.png"));
-    assert!(gmail_html.contains("prefers-color-scheme:dark"));
+    assert!(!html.contains("<picture"), "picture element still emitted");
+    assert!(html.contains("light.png"));
+    assert!(html.contains("dark.png"));
+    assert!(html.contains("prefers-color-scheme:dark"));
     // Outlook ne comprend pas les media queries et afficherait les deux images.
-    assert!(gmail_html.contains("mso-hide:all"));
+    assert!(html.contains("mso-hide:all"));
 }
 
 #[test]
@@ -94,9 +96,15 @@ fn dark_mode_image_differs_between_apple_mail_and_gmail() {
     let apple_html = HtmlGenerator::generate(&doc, registry.get_profile("apple_mail").unwrap());
     let gmail_html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
 
-    assert!(apple_html.contains("<picture>"));
+    // La variante sombre passe par une bascule de classe, plus par <picture> :
+    // cette balise est supprimee par Gmail et ignoree par Outlook, la variante
+    // n'etait donc jamais affichee.
+    assert!(!apple_html.contains("<picture>"));
+    assert!(apple_html.contains("logo-dark.png"));
     assert!(apple_html.contains("prefers-color-scheme"));
-    assert!(!gmail_html.contains("<picture>"));
+
+    // Gmail ne declare pas supporter prefers-color-scheme : aucune variante.
+    assert!(!gmail_html.contains("logo-dark.png"));
 }
 
 #[test]
