@@ -34,6 +34,35 @@ fn button_background_and_color_override_the_theme_preset() {
 }
 
 #[test]
+fn dark_src_uses_a_class_toggle_not_a_picture_element() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-image src="light.png" dark-src="dark.png" alt="Logo" /></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let gmail_html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+
+    // <picture> est supprime par Gmail et ignore par Outlook : la variante
+    // sombre ne serait jamais affichee.
+    assert!(!gmail_html.contains("<picture"), "picture element still emitted");
+    assert!(gmail_html.contains("light.png"));
+    assert!(gmail_html.contains("dark.png"));
+    assert!(gmail_html.contains("prefers-color-scheme:dark"));
+    // Outlook ne comprend pas les media queries et afficherait les deux images.
+    assert!(gmail_html.contains("mso-hide:all"));
+}
+
+#[test]
+fn image_without_dark_src_stays_a_plain_img() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-image src="light.png" alt="Logo" /></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+    assert!(html.contains("light.png"));
+    assert!(!html.contains("mso-hide"));
+}
+
+#[test]
 fn button_falls_back_to_the_theme_preset_without_explicit_colours() {
     let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://example.com" theme="danger">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
     let doc = Parser::parse_document(src).unwrap();

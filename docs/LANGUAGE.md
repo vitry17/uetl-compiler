@@ -106,7 +106,9 @@ Any attribute with a `-light` / `-dark` pair is switched by the email client:
 <ue-layout background-light="#FFFFFF" background-dark="#0F1B33">
 ```
 
-`ue-image` has `dark-src` for the same purpose.
+`ue-image` has `dark-src` for the same purpose. Both images are emitted and
+toggled by the media query — not a `<picture>` element, which Gmail strips and
+Outlook ignores, and which would therefore never show the dark variant.
 
 ### Button colour
 
