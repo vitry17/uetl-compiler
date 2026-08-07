@@ -93,7 +93,7 @@ usual reason a template comes out unstyled.
 | `ue-col` | none — it only holds content, style the row instead |
 | `ue-heading` | `level` *(required)*, `color`, `color-light`, `color-dark`, `font-size`, `align` |
 | `ue-text` | `color`, `color-light`, `color-dark`, `font-size`, `line-height` |
-| `ue-button` | `href` *(required)*, `theme`, `accessible-label` |
+| `ue-button` | `href` *(required)*, `background`, `color`, `theme`, `accessible-label` |
 | `ue-image` | `src` + `alt` *(required)*, `width`, `height`, `dark-src` |
 | `ue-divider` | `color`, `thickness`, `margin` |
 | `ue-spacer` | `height` |
@@ -108,10 +108,15 @@ Any attribute with a `-light` / `-dark` pair is switched by the email client:
 
 `ue-image` has `dark-src` for the same purpose.
 
-### Known limitation: button colour
+### Button colour
 
-`ue-button` accepts only `theme`, whose three values are **hardcoded** in
-`theme_colors` (`src/compiler/html_gen.rs`):
+`background` and `color` take any colour and **override** the `theme` preset:
+
+```html
+<ue-button href="..." background="#00AFF5" color="#05073B">Go</ue-button>
+```
+
+`theme` remains a shortcut when no brand colour applies:
 
 | `theme` | Background | Text |
 |---|---|---|
@@ -119,10 +124,7 @@ Any attribute with a `-light` / `-dark` pair is switched by the email client:
 | `secondary` | `#6c757d` | `#ffffff` |
 | `danger` | `#d9534f` | `#ffffff` |
 
-A brand colour cannot currently be applied to a button. For a product that
-advertises brand-consistent output this is the most visible gap: the call to
-action, the single most brand-loaded element of an email, is the one element
-that cannot carry the brand colour.
+Both work across every profile, including the Outlook VML fallback.
 
 ## Template variables
 

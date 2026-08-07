@@ -16,6 +16,32 @@ fn button_rendering_differs_between_gmail_and_outlook_desktop() {
 }
 
 #[test]
+fn button_background_and_color_override_the_theme_preset() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://example.com" background="#00AFF5" color="#05073B">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    for profile in ["gmail", "outlook_desktop"] {
+        let html = HtmlGenerator::generate(&doc, registry.get_profile(profile).unwrap());
+
+        assert!(html.contains("#00AFF5"), "{profile}: brand background missing");
+        assert!(html.contains("#05073B"), "{profile}: brand text colour missing");
+        // Le preset ne doit plus apparaitre une fois surcharge.
+        assert!(!html.contains("#2E5FAC"), "{profile}: theme preset still applied");
+    }
+}
+
+#[test]
+fn button_falls_back_to_the_theme_preset_without_explicit_colours() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://example.com" theme="danger">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+    assert!(html.contains("#d9534f"));
+}
+
+#[test]
 fn row_uses_media_queries_only_when_profile_supports_them() {
     let src = r#"<ue-email><ue-layout><ue-row stack-on="mobile"><ue-col><ue-text>A</ue-text></ue-col><ue-col><ue-text>B</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
     let doc = Parser::parse_document(src).unwrap();
