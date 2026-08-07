@@ -17,7 +17,9 @@ fn button_rendering_differs_between_gmail_and_outlook_desktop() {
 
 #[test]
 fn button_background_and_color_override_the_theme_preset() {
-    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://example.com" background="#00AFF5" color="#05073B">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
+    // r##"..."## et non r#"..."# : la sequence `"#` d'un attribut de couleur
+    // fermerait la chaine brute en plein milieu.
+    let src = r##"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://example.com" background="#00AFF5" color="#05073B">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"##;
     let doc = Parser::parse_document(src).unwrap();
     let registry = ProfileRegistry::load();
 
@@ -29,6 +31,37 @@ fn button_background_and_color_override_the_theme_preset() {
         // Le preset ne doit plus apparaitre une fois surcharge.
         assert!(!html.contains("#2E5FAC"), "{profile}: theme preset still applied");
     }
+}
+
+#[test]
+fn dark_src_uses_a_class_toggle_not_a_picture_element() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-image src="light.png" dark-src="dark.png" alt="Logo" /></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    // apple_mail et non gmail : Gmail declare ne pas supporter
+    // prefers-color-scheme, il n'a donc jamais de variante sombre.
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("apple_mail").unwrap());
+
+    // <picture> est supprime par Gmail et ignore par Outlook : la variante
+    // sombre ne serait jamais affichee.
+    assert!(!html.contains("<picture"), "picture element still emitted");
+    assert!(html.contains("light.png"));
+    assert!(html.contains("dark.png"));
+    assert!(html.contains("prefers-color-scheme:dark"));
+    // Outlook ne comprend pas les media queries et afficherait les deux images.
+    assert!(html.contains("mso-hide:all"));
+}
+
+#[test]
+fn image_without_dark_src_stays_a_plain_img() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-image src="light.png" alt="Logo" /></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+    assert!(html.contains("light.png"));
+    assert!(!html.contains("mso-hide"));
 }
 
 #[test]
@@ -63,9 +96,15 @@ fn dark_mode_image_differs_between_apple_mail_and_gmail() {
     let apple_html = HtmlGenerator::generate(&doc, registry.get_profile("apple_mail").unwrap());
     let gmail_html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
 
-    assert!(apple_html.contains("<picture>"));
+    // La variante sombre passe par une bascule de classe, plus par <picture> :
+    // cette balise est supprimee par Gmail et ignoree par Outlook, la variante
+    // n'etait donc jamais affichee.
+    assert!(!apple_html.contains("<picture>"));
+    assert!(apple_html.contains("logo-dark.png"));
     assert!(apple_html.contains("prefers-color-scheme"));
-    assert!(!gmail_html.contains("<picture>"));
+
+    // Gmail ne declare pas supporter prefers-color-scheme : aucune variante.
+    assert!(!gmail_html.contains("logo-dark.png"));
 }
 
 #[test]
