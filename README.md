@@ -26,6 +26,14 @@ compiles to a VML `<v:roundrect>` + table fallback for Outlook Desktop, and a pl
 
 Early but functional: lexer, recursive-descent parser with semantic validation, HTML generator, and an HTTP API all work end-to-end with 50 passing tests. Dark mode is supported on headings, text, layout backgrounds, and images. What's missing: a CLI/visual preview tool, AMP-style interactivity, and a published crate. Contributions and bug reports on real-world rendering quirks are very welcome.
 
+## Language reference
+
+**[docs/LANGUAGE.md](docs/LANGUAGE.md)** — the twelve tags, the hierarchy the
+parser enforces, required attributes, and the exact error messages. Worth
+reading before writing a template by hand, and worth pointing any code
+generator at: without it, a plausible-looking `<uetl>` or `<div>` gets written
+and rejected.
+
 ## Quickstart
 
 ```bash
