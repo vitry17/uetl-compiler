@@ -17,7 +17,9 @@ fn button_rendering_differs_between_gmail_and_outlook_desktop() {
 
 #[test]
 fn button_background_and_color_override_the_theme_preset() {
-    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://example.com" background="#00AFF5" color="#05073B">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
+    // r##"..."## et non r#"..."# : la sequence `"#` d'un attribut de couleur
+    // fermerait la chaine brute en plein milieu.
+    let src = r##"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://example.com" background="#00AFF5" color="#05073B">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"##;
     let doc = Parser::parse_document(src).unwrap();
     let registry = ProfileRegistry::load();
 
