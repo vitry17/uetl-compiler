@@ -79,6 +79,51 @@ Omitting these fails parsing with `missing required attribute`.
 
 All other attributes are optional and passed through to the renderer.
 
+## Styling attributes
+
+There is no `<style>` tag and no CSS. Everything is an attribute, and only the
+ones listed here are read — anything else is silently ignored, which is the
+usual reason a template comes out unstyled.
+
+| Tag | Attributes |
+|---|---|
+| `ue-email` | `lang`, `dark-mode` |
+| `ue-layout` | `background`, `background-light`, `background-dark`, `padding`, `margin`, `max-width` |
+| `ue-row` | `background`, `padding`, `gap`, `stack-on="mobile"` |
+| `ue-col` | none — it only holds content, style the row instead |
+| `ue-heading` | `level` *(required)*, `color`, `color-light`, `color-dark`, `font-size`, `align` |
+| `ue-text` | `color`, `color-light`, `color-dark`, `font-size`, `line-height` |
+| `ue-button` | `href` *(required)*, `theme`, `accessible-label` |
+| `ue-image` | `src` + `alt` *(required)*, `width`, `height`, `dark-src` |
+| `ue-divider` | `color`, `thickness`, `margin` |
+| `ue-spacer` | `height` |
+
+### Dark mode
+
+Any attribute with a `-light` / `-dark` pair is switched by the email client:
+
+```html
+<ue-layout background-light="#FFFFFF" background-dark="#0F1B33">
+```
+
+`ue-image` has `dark-src` for the same purpose.
+
+### Known limitation: button colour
+
+`ue-button` accepts only `theme`, whose three values are **hardcoded** in
+`theme_colors` (`src/compiler/html_gen.rs`):
+
+| `theme` | Background | Text |
+|---|---|---|
+| `primary` (default) | `#2E5FAC` | `#ffffff` |
+| `secondary` | `#6c757d` | `#ffffff` |
+| `danger` | `#d9534f` | `#ffffff` |
+
+A brand colour cannot currently be applied to a button. For a product that
+advertises brand-consistent output this is the most visible gap: the call to
+action, the single most brand-loaded element of an email, is the one element
+that cannot carry the brand colour.
+
 ## Template variables
 
 `{{ variable }}` is valid inside text content and inside attribute values. The
