@@ -292,7 +292,21 @@ impl<'a> HtmlGenerator<'a> {
         let href = attr_str(&el.attrs, "href").unwrap_or_default();
         let label = self.gen_children(&el.children);
         let accessible_label = attr_str(&el.attrs, "accessible-label");
-        let (background, color) = theme_colors(attr_str(&el.attrs, "theme").as_deref());
+
+        // `theme` fournit un preset; `background` et `color` le surchargent.
+        // Sans cette surcharge un bouton ne pouvait porter que l'une des trois
+        // couleurs codees en dur, ce qui rendait toute charte graphique
+        // inapplicable a l'element le plus charge en identite d'un email.
+        let (theme_background, theme_color) =
+            theme_colors(attr_str(&el.attrs, "theme").as_deref());
+        let background = attr_str(&el.attrs, "background")
+            .as_deref()
+            .map(normalize_color)
+            .unwrap_or(theme_background);
+        let color = attr_str(&el.attrs, "color")
+            .as_deref()
+            .map(normalize_color)
+            .unwrap_or(theme_color);
         let aria = accessible_label
             .map(|l| format!(" aria-label=\"{}\"", html_escape(&l)))
             .unwrap_or_default();
