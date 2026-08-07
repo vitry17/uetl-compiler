@@ -343,9 +343,28 @@ impl<'a> HtmlGenerator<'a> {
 
         if let Some(dark_src) = dark_src {
             if self.profile.supports("dark_mode_media_query").is_supported() {
+                // Deux images superposees, basculees par media query, plutot que
+                // <picture> : Gmail supprime purement et simplement cette balise
+                // et Outlook l'ignore, de sorte que la variante sombre n'etait
+                // jamais utilisee. La bascule par classe est la technique
+                // reellement supportee en email, et c'est deja celle qu'utilise
+                // dark_media_class_for_attr pour les couleurs.
+                let light_class = self.next_class("ue-dark");
+                let dark_class = self.next_class("ue-dark");
+
+                self.push_style_rule(format!(
+                    "@media (prefers-color-scheme:dark){{\
+.{light_class}{{display:none !important;}}\
+.{dark_class}{{display:inline-block !important;}}}}"
+                ));
+
+                // mso-hide masque la variante sombre dans Outlook, qui ne
+                // comprend pas les media queries et afficherait les deux.
                 return format!(
-                    "<picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"{dark_src}\">\
-<img src=\"{src}\" alt=\"{alt}\"{width_attr}{style} /></picture>"
+                    "<span class=\"{light_class}\">\
+<img src=\"{src}\" alt=\"{alt}\"{width_attr}{style} /></span>\
+<span class=\"{dark_class}\" style=\"display:none;mso-hide:all;\">\
+<img src=\"{dark_src}\" alt=\"{alt}\"{width_attr}{style} /></span>"
                 );
             }
         }
