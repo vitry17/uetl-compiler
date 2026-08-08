@@ -89,14 +89,53 @@ usual reason a template comes out unstyled.
 |---|---|
 | `ue-email` | `lang`, `dark-mode` |
 | `ue-layout` | `background`, `background-light`, `background-dark`, `padding`, `margin`, `max-width` |
-| `ue-row` | `background`, `padding`, `gap`, `stack-on="mobile"` |
-| `ue-col` | none — it only holds content, style the row instead |
+| `ue-row` | `background`, `background-light`, `background-dark`, `padding`, `border`, `border-radius`, `align`, `gap`, `stack-on="mobile"` |
+| `ue-col` | `background`, `background-light`, `background-dark`, `padding`, `border`, `border-radius`, `align` |
 | `ue-heading` | `level` *(required)*, `color`, `color-light`, `color-dark`, `font-size`, `align` |
-| `ue-text` | `color`, `color-light`, `color-dark`, `font-size`, `line-height` |
-| `ue-button` | `href` *(required)*, `background`, `color`, `theme`, `accessible-label` |
-| `ue-image` | `src` + `alt` *(required)*, `width`, `height`, `dark-src` |
+| `ue-text` | `color`, `color-light`, `color-dark`, `font-size`, `line-height`, `align` |
+| `ue-button` | `href` *(required)*, `background`, `color`, `theme`, `border-radius`, `align`, `accessible-label` |
+| `ue-image` | `src` + `alt` *(required)*, `width`, `height`, `border-radius`, `dark-src` |
 | `ue-divider` | `color`, `thickness`, `margin` |
 | `ue-spacer` | `height` |
+
+`background` and `background-light` are interchangeable everywhere.
+
+### Cards
+
+`ue-col` carries its own box styling — that is how you build the tiles,
+callout boxes and partner blocks that make up most real marketing emails:
+
+```html
+<ue-row gap="16px" stack-on="mobile">
+  <ue-col background="#FFFFFF" padding="20px" border-radius="12px" align="center">
+    <ue-image src="coins.png" alt="Savings" width="64px" />
+    <ue-text align="center">Cut your costs</ue-text>
+  </ue-col>
+  <ue-col background="#FFFFFF" padding="20px" border-radius="12px" align="center">
+    <ue-image src="rocket.png" alt="Fast" width="64px" />
+    <ue-text align="center">Set up in minutes</ue-text>
+  </ue-col>
+</ue-row>
+```
+
+A column background is emitted twice — as CSS and as a `bgcolor` attribute —
+because Outlook's Word engine honours the attribute far more reliably.
+
+### Alignment
+
+`align` on `ue-col` centres everything inline inside it: text, headings,
+images. A **button is a `<table>`**, which is block-level, so `text-align`
+does not centre it — put `align="center"` on the `ue-button` itself.
+
+### Rounded corners
+
+`border-radius` works on `ue-col`, `ue-row`, `ue-button` and `ue-image`.
+
+Outlook's Word engine ignores CSS `border-radius`: corners stay square there,
+while the background and padding still apply. The **button** is the exception —
+its Outlook fallback is VML, whose `arcsize` is derived from your radius, so a
+pill button stays a pill. The button is 44px tall, so any radius from 22px up
+renders fully rounded.
 
 ### Dark mode
 
