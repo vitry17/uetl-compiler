@@ -199,6 +199,11 @@ impl<'a> HtmlGenerator<'a> {
             UetlTag::Spacer => self.gen_spacer(el),
             UetlTag::Interactive => self.gen_interactive(el),
             UetlTag::Raw => self.gen_raw(el),
+            // <strong> et <em> plutot que <b>/<i> : meme rendu partout, y
+            // compris dans le moteur Word d'Outlook, et le sens est porte
+            // pour les lecteurs d'ecran.
+            UetlTag::Bold => format!("<strong>{}</strong>", self.gen_children(&el.children)),
+            UetlTag::Italic => format!("<em>{}</em>", self.gen_children(&el.children)),
         }
     }
 
@@ -460,7 +465,15 @@ impl<'a> HtmlGenerator<'a> {
                 attr_str(&el.attrs, "border-radius").as_deref().map(css_unit),
             ),
         ]);
-        let width_attr = width.map(|w| format!(" width=\"{w}\"")).unwrap_or_default();
+        // L'attribut HTML width attend un entier NU : `width="160px"` est
+        // invalide et se fait ignorer, ce qui laisse Outlook afficher l'image
+        // a sa taille native — souvent deux fois trop grande. La CSS garde
+        // l'unite, l'attribut ne prend que le nombre.
+        let width_attr = width
+            .as_deref()
+            .and_then(pixel_count)
+            .map(|w| format!(" width=\"{w}\""))
+            .unwrap_or_default();
 
         if let Some(dark_src) = dark_src {
             if self.profile.supports("dark_mode_media_query").is_supported() {
@@ -533,6 +546,13 @@ impl<'a> HtmlGenerator<'a> {
             })
             .collect()
     }
+}
+
+/// Nombre de pixels d'une dimension CSS, pour les attributs HTML qui exigent
+/// un entier nu (`width` sur `<img>`). Retourne None pour une valeur relative
+/// (`100%`, `auto`) : mieux vaut omettre l'attribut que le remplir de travers.
+fn pixel_count(value: &str) -> Option<u32> {
+    value.strip_suffix("px")?.trim().parse::<f64>().ok().map(|v| v.round() as u32)
 }
 
 /// Traduit un `border-radius` CSS en `arcsize` VML, seul arrondi qu'Outlook
