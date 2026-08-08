@@ -51,7 +51,7 @@ Minimal valid document:
 
 ## Tags
 
-There are exactly twelve. No others are accepted.
+There are exactly fourteen. No others are accepted.
 
 | Tag | Role | Allowed children |
 |---|---|---|
@@ -67,6 +67,8 @@ There are exactly twelve. No others are accepted.
 | `ue-spacer` | Vertical space | — |
 | `ue-interactive` | Interactive block (AMP-style) | content tags |
 | `ue-raw` | Escape hatch for raw HTML | raw content |
+| `ue-bold` | Inline bold, mid-sentence | text, `ue-italic` |
+| `ue-italic` | Inline italic, mid-sentence | text, `ue-bold` |
 
 ## Required attributes
 
@@ -121,11 +123,35 @@ callout boxes and partner blocks that make up most real marketing emails:
 A column background is emitted twice — as CSS and as a `bgcolor` attribute —
 because Outlook's Word engine honours the attribute far more reliably.
 
+### Inline emphasis
+
+`ue-bold` and `ue-italic` apply to a fragment **inside** a sentence, which is
+what real copy needs — an attribute on `ue-text` could only bold the whole
+paragraph:
+
+```html
+<ue-text>And what if your <ue-bold>next subscription</ue-bold> were your own?</ue-text>
+```
+
+They nest, and work inside `ue-heading` and `ue-button` too. They compile to
+`<strong>` and `<em>` rather than `<b>` and `<i>`: same rendering everywhere
+including Outlook's Word engine, and the meaning survives for screen readers.
+
+They are only valid where text is written — directly under `ue-col` they are
+rejected, because there is no sentence to emphasise.
+
 ### Alignment
 
 `align` on `ue-col` centres everything inline inside it: text, headings,
 images. A **button is a `<table>`**, which is block-level, so `text-align`
 does not centre it — put `align="center"` on the `ue-button` itself.
+
+### Image width
+
+`width` accepts any CSS length. A pixel value is also emitted as the HTML
+`width` attribute — as a **bare integer**, since `width="160px"` is invalid and
+gets ignored, which leaves Outlook showing the image at its native size. A
+relative value (`100%`, `auto`) stays CSS-only rather than being guessed at.
 
 ### Rounded corners
 
