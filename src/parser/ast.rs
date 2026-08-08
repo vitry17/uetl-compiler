@@ -50,6 +50,14 @@ pub enum UetlTag {
     Spacer,
     Interactive,
     Raw,
+    /// Mise en forme *en ligne*, au milieu d'une phrase.
+    ///
+    /// Un attribut sur `ue-text` n'aurait pas suffi : ce qu'un email demande,
+    /// c'est « votre **prochain abonnement** », deux mots au milieu du reste.
+    /// Il faut donc une balise imbriquable dans le contenu, pas une propriete
+    /// de tout le paragraphe.
+    Bold,
+    Italic,
 }
 
 impl UetlTag {
@@ -67,6 +75,8 @@ impl UetlTag {
             "ue-spacer" => Some(Self::Spacer),
             "ue-interactive" => Some(Self::Interactive),
             "ue-raw" => Some(Self::Raw),
+            "ue-bold" => Some(Self::Bold),
+            "ue-italic" => Some(Self::Italic),
             _ => None,
         }
     }
@@ -85,6 +95,8 @@ impl UetlTag {
             Self::Spacer => "ue-spacer",
             Self::Interactive => "ue-interactive",
             Self::Raw => "ue-raw",
+            Self::Bold => "ue-bold",
+            Self::Italic => "ue-italic",
         }
     }
 
@@ -107,6 +119,11 @@ impl UetlTag {
                     Col,
                     Heading | Text | Image | Button | Divider | Spacer | Interactive | Raw | Row
                 )
+                // Mise en forme en ligne : partout ou du texte s'ecrit, et
+                // imbricable en elle-meme pour du gras italique.
+                | (Heading | Text | Button, Bold | Italic)
+                | (Bold, Italic)
+                | (Italic, Bold)
         )
     }
 }
