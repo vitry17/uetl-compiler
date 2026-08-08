@@ -99,6 +99,79 @@ impl<'a> HtmlGenerator<'a> {
         Some(format!("{data_attr_name}=\"{value}\""))
     }
 
+    /// Declarations CSS d'une « boite » stylable — `ue-row` et `ue-col`.
+    ///
+    /// Sans elles une colonne ne portait aucun style : `gen_col` se contentait
+    /// de rendre ses enfants. Les elements les plus courants d'un email reel —
+    /// tuiles d'arguments, encadres colores, blocs partenaires — sont pourtant
+    /// des colonnes a fond, marge interieure et angles arrondis. Ils etaient
+    /// donc inexprimables, quelle que soit l'habilete de l'auteur.
+    ///
+    /// `border-radius` est ignore par le moteur Word d'Outlook : les angles y
+    /// restent droits. C'est une degradation acceptable, le fond et la marge
+    /// etant eux honores.
+    fn box_style_decls(&self, el: &ElementNode) -> Vec<(&'static str, Option<String>)> {
+        vec![
+            (
+                "background",
+                attr_themed(&el.attrs, "background").as_deref().map(normalize_color),
+            ),
+            ("padding", attr_str(&el.attrs, "padding").as_deref().map(css_unit)),
+            ("border", attr_str(&el.attrs, "border")),
+            (
+                "border-radius",
+                attr_str(&el.attrs, "border-radius").as_deref().map(css_unit),
+            ),
+            ("text-align", attr_str(&el.attrs, "align")),
+        ]
+    }
+
+    /// Attributs non-CSS d'une boite : classes (dont celle du mode sombre),
+    /// `data-ogsb` pour Yahoo/AOL, et `bgcolor` sur les cellules de tableau.
+    ///
+    /// `bgcolor` double la declaration CSS parce que le moteur Word d'Outlook
+    /// l'honore de facon bien plus fiable qu'un `background`. Il n'a en
+    /// revanche aucun sens sur un `<div>`, d'ou `with_bgcolor`.
+    ///
+    /// A n'appeler qu'une fois par element : la classe de mode sombre est
+    /// generee au vol et enregistre une regle CSS au passage.
+    fn box_marker_attrs(
+        &self,
+        el: &ElementNode,
+        base_class: Option<&str>,
+        with_bgcolor: bool,
+    ) -> String {
+        let mut classes: Vec<String> = base_class.into_iter().map(String::from).collect();
+
+        if let Some(class) = self.dark_media_class_for_attr(&el.attrs, "background-dark", "background")
+        {
+            classes.push(class);
+        }
+
+        let class_attr = if classes.is_empty() {
+            String::new()
+        } else {
+            format!(" class=\"{}\"", classes.join(" "))
+        };
+
+        let bgcolor = if with_bgcolor {
+            attr_themed(&el.attrs, "background")
+                .as_deref()
+                .map(normalize_color)
+                .map(|color| format!(" bgcolor=\"{color}\""))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let data_attr = self
+            .dark_data_attr_for(&el.attrs, "background-dark", "background")
+            .map(|attr| format!(" {attr}"))
+            .unwrap_or_default();
+
+        format!("{class_attr}{bgcolor}{data_attr}")
+    }
+
     fn gen_children(&self, children: &[Node]) -> String {
         children.iter().map(|child| self.gen_node(child)).collect()
     }
@@ -155,7 +228,7 @@ impl<'a> HtmlGenerator<'a> {
     fn gen_layout(&self, el: &ElementNode) -> String {
         let max_width = attr_str(&el.attrs, "max-width").unwrap_or_else(|| "600px".to_string());
         let padding = attr_str(&el.attrs, "padding").as_deref().map(css_unit);
-        let background = attr_str(&el.attrs, "background-light").as_deref().map(normalize_color);
+        let background = attr_themed(&el.attrs, "background").as_deref().map(normalize_color);
 
         let outer_style = style_attr(&[("background", background)]);
         let class_attr = self.dark_mode_attrs(&el.attrs, "background-dark", "background");
@@ -175,9 +248,6 @@ impl<'a> HtmlGenerator<'a> {
     }
 
     fn gen_row(&self, el: &ElementNode) -> String {
-        let gap = attr_str(&el.attrs, "gap").as_deref().map(css_unit);
-        let background = attr_str(&el.attrs, "background").as_deref().map(normalize_color);
-        let padding = attr_str(&el.attrs, "padding").as_deref().map(css_unit);
         let stack_on_mobile = attr_str(&el.attrs, "stack-on").as_deref() == Some("mobile");
 
         let cols: Vec<&ElementNode> = el
@@ -197,66 +267,85 @@ impl<'a> HtmlGenerator<'a> {
             self.push_style_rule(format!(
                 "@media (max-width:600px){{.{class}{{display:block!important;width:100%!important;}} .{class} .ue-col{{display:block!important;width:100%!important;}}}}"
             ));
-            return self.render_row_cells(&cols, gap, background, padding, flexbox_supported, Some(&class));
+            return self.render_row_cells(el, &cols, flexbox_supported, Some(&class));
         }
 
         if stack_on_mobile && !media_queries_supported {
             // Pas de media queries disponibles : on force directement une colonne unique.
-            return self.render_stacked_cells(&cols, background, padding);
+            return self.render_stacked_cells(el, &cols);
         }
 
-        self.render_row_cells(&cols, gap, background, padding, flexbox_supported, None)
+        self.render_row_cells(el, &cols, flexbox_supported, None)
     }
 
     fn render_row_cells(
         &self,
+        row: &ElementNode,
         cols: &[&ElementNode],
-        gap: Option<String>,
-        background: Option<String>,
-        padding: Option<String>,
         flexbox_supported: bool,
         class: Option<&str>,
     ) -> String {
+        let gap = attr_str(&row.attrs, "gap").as_deref().map(css_unit);
+
         if flexbox_supported {
-            let container_class = class.map(|c| format!(" class=\"{c}\"")).unwrap_or_default();
-            let container_style = style_attr(&[
-                ("display", Some("flex".into())),
-                ("gap", gap),
-                ("background", background),
-                ("padding", padding),
-            ]);
+            let container_attrs = self.box_marker_attrs(row, class, false);
+            let mut decls = self.box_style_decls(row);
+            decls.push(("display", Some("flex".into())));
+            decls.push(("gap", gap));
+            let container_style = style_attr(&decls);
+
             let cells = cols.iter().fold(String::new(), |mut acc, col| {
+                let col_attrs = self.box_marker_attrs(col, Some("ue-col"), false);
+                let mut col_decls = self.box_style_decls(col);
+                col_decls.push(("flex", Some("1".into())));
+                let col_style = style_attr(&col_decls);
                 let content = self.gen_col(col);
-                let _ = write!(acc, "<div class=\"ue-col\" style=\"flex:1;\">{content}</div>");
+                let _ = write!(acc, "<div{col_attrs}{col_style}>{content}</div>");
                 acc
             });
-            format!("<div{container_class}{container_style}>{cells}</div>")
+
+            format!("<div{container_attrs}{container_style}>{cells}</div>")
         } else {
-            let table_class = class.map(|c| format!(" class=\"{c}\"")).unwrap_or_default();
-            let table_style = style_attr(&[("background", background), ("padding", padding)]);
+            let table_attrs = self.box_marker_attrs(row, class, true);
+            let table_style = style_attr(&self.box_style_decls(row));
+
             let cells = cols.iter().fold(String::new(), |mut acc, col| {
-                let content = self.gen_col(col);
-                let _ = write!(acc, "<td class=\"ue-col\" valign=\"top\">{content}</td>");
+                let _ = write!(acc, "{}", self.render_col_cell(col));
                 acc
             });
+
             format!(
-                "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{table_class}{table_style}><tr>{cells}</tr></table>"
+                "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{table_attrs}{table_style}><tr>{cells}</tr></table>"
             )
         }
     }
 
-    fn render_stacked_cells(
-        &self,
-        cols: &[&ElementNode],
-        background: Option<String>,
-        padding: Option<String>,
-    ) -> String {
-        let table_style = style_attr(&[("background", background), ("padding", padding)]);
+    fn render_stacked_cells(&self, row: &ElementNode, cols: &[&ElementNode]) -> String {
+        let table_attrs = self.box_marker_attrs(row, None, true);
+        let table_style = style_attr(&self.box_style_decls(row));
+
         let rows = cols.iter().fold(String::new(), |mut acc, col| {
-            let _ = write!(acc, "<tr><td>{}</td></tr>", self.gen_col(col));
+            let _ = write!(acc, "<tr>{}</tr>", self.render_col_cell(col));
             acc
         });
-        format!("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{table_style}>{rows}</table>")
+
+        format!(
+            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{table_attrs}{table_style}>{rows}</table>"
+        )
+    }
+
+    /// Une colonne rendue en cellule de tableau, avec ses propres styles.
+    ///
+    /// Les styles sont poses sur le `<td>` plutot que dans un element
+    /// supplementaire : Outlook honore `bgcolor` et `padding` sur une cellule,
+    /// et chaque niveau d'imbrication en plus est une occasion de divergence
+    /// entre clients.
+    fn render_col_cell(&self, col: &ElementNode) -> String {
+        let attrs = self.box_marker_attrs(col, Some("ue-col"), true);
+        let style = style_attr(&self.box_style_decls(col));
+        let content = self.gen_col(col);
+
+        format!("<td{attrs} valign=\"top\"{style}>{content}</td>")
     }
 
     fn gen_col(&self, el: &ElementNode) -> String {
@@ -282,6 +371,7 @@ impl<'a> HtmlGenerator<'a> {
             ("color", color),
             ("font-size", font_size),
             ("line-height", line_height),
+            ("text-align", attr_str(&el.attrs, "align")),
         ]);
         let class_attr = self.dark_mode_attrs(&el.attrs, "color-dark", "color");
         let content = self.gen_children(&el.children);
@@ -311,21 +401,42 @@ impl<'a> HtmlGenerator<'a> {
             .map(|l| format!(" aria-label=\"{}\"", html_escape(&l)))
             .unwrap_or_default();
 
+        // Le rayon etait ecrit en dur a 4px : aucun bouton en pilule n'etait
+        // possible, alors que c'est la forme la plus courante des chartes
+        // actuelles.
+        let radius = attr_str(&el.attrs, "border-radius")
+            .as_deref()
+            .map(css_unit)
+            .unwrap_or_else(|| "4px".to_string());
+
+        // `align` sur la table plutot qu'un text-align herite : un `<table>`
+        // est de niveau bloc, `text-align:center` sur son parent ne le centre
+        // donc pas. L'attribut HTML align, lui, est honore par tous les
+        // clients, Outlook compris.
+        let align = attr_str(&el.attrs, "align")
+            .map(|a| format!(" align=\"{a}\""))
+            .unwrap_or_default();
+
         if self.profile.quirk("vml_support") {
+            // VML ne connait pas border-radius : il exprime l'arrondi en
+            // pourcentage de la moitie du plus petit cote. Le bouton faisant
+            // 44px de haut, 50 % correspond a un rayon de 22px — la pilule.
+            let arcsize = vml_arcsize(&radius);
+
             format!(
                 "<!--[if mso]>\
-<v:roundrect xmlns:v=\"urn:schemas-microsoft-com:vml\" href=\"{href}\" style=\"height:44px;v-text-anchor:middle;width:200px;\" arcsize=\"10%\" stroke=\"f\" fillcolor=\"{background}\">\
+<v:roundrect xmlns:v=\"urn:schemas-microsoft-com:vml\" href=\"{href}\" style=\"height:44px;v-text-anchor:middle;width:200px;\" arcsize=\"{arcsize}%\" stroke=\"f\" fillcolor=\"{background}\">\
 <center style=\"color:{color};font-family:Arial,sans-serif;font-size:16px;\">{label}</center></v:roundrect>\
 <![endif]-->\
 <!--[if !mso]><!-->\
-<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr><td align=\"center\" bgcolor=\"{background}\" style=\"border-radius:4px;\">\
+<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"{align}><tr><td align=\"center\" bgcolor=\"{background}\" style=\"border-radius:{radius};\">\
 <a href=\"{href}\"{aria} style=\"font-size:16px;font-family:Arial,sans-serif;color:{color};text-decoration:none;padding:12px 24px;display:inline-block;\">{label}</a>\
 </td></tr></table>\
 <!--<![endif]-->"
             )
         } else {
             format!(
-                "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr><td align=\"center\" bgcolor=\"{background}\" style=\"border-radius:4px;\">\
+                "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"{align}><tr><td align=\"center\" bgcolor=\"{background}\" style=\"border-radius:{radius};\">\
 <a href=\"{href}\"{aria} style=\"font-size:16px;font-family:Arial,sans-serif;color:{color};text-decoration:none;padding:12px 24px;display:inline-block;\">{label}</a>\
 </td></tr></table>"
             )
@@ -338,7 +449,17 @@ impl<'a> HtmlGenerator<'a> {
         let width = attr_str(&el.attrs, "width").as_deref().map(css_unit);
         let height = attr_str(&el.attrs, "height").as_deref().map(css_unit);
         let dark_src = attr_str(&el.attrs, "dark-src");
-        let style = style_attr(&[("width", width.clone()), ("height", height.clone())]);
+        // Une image est en ligne : `align` sur la colonne parente la centre
+        // deja via text-align. Seul l'arrondi manquait, tres courant sur les
+        // visuels d'en-tete. Outlook l'ignore, l'image y reste a angles droits.
+        let style = style_attr(&[
+            ("width", width.clone()),
+            ("height", height.clone()),
+            (
+                "border-radius",
+                attr_str(&el.attrs, "border-radius").as_deref().map(css_unit),
+            ),
+        ]);
         let width_attr = width.map(|w| format!(" width=\"{w}\"")).unwrap_or_default();
 
         if let Some(dark_src) = dark_src {
@@ -412,6 +533,26 @@ impl<'a> HtmlGenerator<'a> {
             })
             .collect()
     }
+}
+
+/// Traduit un `border-radius` CSS en `arcsize` VML, seul arrondi qu'Outlook
+/// comprenne. VML l'exprime en pourcentage de la moitie du plus petit cote ;
+/// le bouton faisant 44px de haut, 50 % vaut un rayon de 22px, et tout rayon
+/// superieur est ramene a cette valeur — au-dela, la forme ne change plus.
+fn vml_arcsize(radius: &str) -> u32 {
+    let px: f64 = radius
+        .trim_end_matches(|c: char| !c.is_ascii_digit() && c != '.')
+        .parse()
+        .unwrap_or(4.0);
+
+    ((px / 22.0) * 50.0).round().clamp(0.0, 50.0) as u32
+}
+
+/// Lit `nom-light` en priorite, puis `nom`. Les deux ecritures coexistaient
+/// selon les balises — `ue-layout` n'acceptait que `background-light`, `ue-row`
+/// que `background` — ce qui rendait le langage imprevisible.
+fn attr_themed(attrs: &HashMap<String, AttrValue>, name: &str) -> Option<String> {
+    attr_str(attrs, &format!("{name}-light")).or_else(|| attr_str(attrs, name))
 }
 
 fn theme_colors(theme: Option<&str>) -> (String, String) {
