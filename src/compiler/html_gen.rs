@@ -359,7 +359,7 @@ impl<'a> HtmlGenerator<'a> {
 
     fn gen_heading(&self, el: &ElementNode) -> String {
         let level = attr_str(&el.attrs, "level").unwrap_or_else(|| "1".to_string());
-        let color = attr_str(&el.attrs, "color-light").as_deref().map(normalize_color);
+        let color = attr_themed(&el.attrs, "color").as_deref().map(normalize_color);
         let font_size = attr_str(&el.attrs, "font-size").as_deref().map(css_unit);
         let align = attr_str(&el.attrs, "align");
         let style = style_attr(&[("color", color), ("font-size", font_size), ("text-align", align)]);
@@ -369,7 +369,7 @@ impl<'a> HtmlGenerator<'a> {
     }
 
     fn gen_text(&self, el: &ElementNode) -> String {
-        let color = attr_str(&el.attrs, "color-light").as_deref().map(normalize_color);
+        let color = attr_themed(&el.attrs, "color").as_deref().map(normalize_color);
         let font_size = attr_str(&el.attrs, "font-size").as_deref().map(css_unit);
         let line_height = attr_str(&el.attrs, "line-height");
         let style = style_attr(&[
