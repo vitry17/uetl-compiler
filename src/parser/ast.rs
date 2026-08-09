@@ -13,6 +13,12 @@ pub struct DocumentNode {
     pub children: Vec<Node>,
     pub lang: String,
     pub dark_mode: DarkModeOption,
+    /// Police du document, declaree sur `<ue-email font-family="...">`.
+    ///
+    /// Portee par le document et non par chaque bloc : une charge graphique
+    /// s'applique a tout l'email, et la repeter sur chaque balise serait a la
+    /// fois verbeux et fragile.
+    pub font_family: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

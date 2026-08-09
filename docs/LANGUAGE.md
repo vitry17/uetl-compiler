@@ -89,7 +89,7 @@ usual reason a template comes out unstyled.
 
 | Tag | Attributes |
 |---|---|
-| `ue-email` | `lang`, `dark-mode` |
+| `ue-email` | `lang`, `dark-mode`, `font-family` |
 | `ue-layout` | `background`, `background-light`, `background-dark`, `padding`, `margin`, `max-width` |
 | `ue-row` | `background`, `background-light`, `background-dark`, `padding`, `border`, `border-radius`, `align`, `gap`, `stack-on="mobile"` |
 | `ue-col` | `background`, `background-light`, `background-dark`, `padding`, `border`, `border-radius`, `align` |
@@ -122,6 +122,34 @@ callout boxes and partner blocks that make up most real marketing emails:
 
 A column background is emitted twice — as CSS and as a `bgcolor` attribute —
 because Outlook's Word engine honours the attribute far more reliably.
+
+### Font
+
+`font-family` on `ue-email` sets the typeface for the whole document. It is
+emitted on **every** text block rather than once on `<body>`, because Outlook's
+Word engine does not inherit fonts into tables — and the entire layout is
+tables.
+
+Without it, a sans-serif stack is used. Emitting nothing was the previous
+behaviour, and left Outlook rendering a serif: no branded email ever looked
+like its mockup.
+
+Use fonts that are actually installed on the reader's machine. A webfont does
+not load in most email clients, so list a real fallback:
+
+```html
+<ue-email font-family="Inter, Helvetica, Arial, sans-serif">
+```
+
+### Spacing between columns
+
+`gap` on `ue-row` works everywhere. Where flexbox is available it uses the
+native property; elsewhere the compiler inserts real spacer cells, because a
+table cell has no notion of `gap` — the attribute used to vanish for Gmail and
+Outlook, and the cards touched.
+
+With `stack-on="mobile"`, the spacers are hidden once the row stacks: kept,
+they would become empty bands between the cards.
 
 ### Inline emphasis
 

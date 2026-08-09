@@ -119,10 +119,16 @@ impl Parser {
             _ => DarkModeOption::Off,
         };
 
+        let font_family = match root.attrs.get("font-family") {
+            Some(AttrValue::String(s)) => Some(s.clone()),
+            _ => None,
+        };
+
         Ok(DocumentNode {
             children: root.children,
             lang,
             dark_mode,
+            font_family,
         })
     }
 
