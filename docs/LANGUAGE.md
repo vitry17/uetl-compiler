@@ -141,6 +141,17 @@ not load in most email clients, so list a real fallback:
 <ue-email font-family="Inter, Helvetica, Arial, sans-serif">
 ```
 
+### Columns and `stack-on`
+
+Columns are laid out side by side in every client. `stack-on="mobile"` stacks
+them through a media query, at the reader's actual window width.
+
+A client that does not support media queries — Outlook Desktop — **keeps the
+columns side by side**. It used to stack them permanently, which broke every
+two-column layout there: a product grid or an image-left/text-right block came
+out one item per row. Outlook Desktop is a *desktop* client; it is never the
+mobile case, and it renders table columns perfectly.
+
 ### Spacing between columns
 
 `gap` on `ue-row` works everywhere. Where flexbox is available it uses the
@@ -180,6 +191,10 @@ does not centre it — put `align="center"` on the `ue-button` itself.
 `width` attribute — as a **bare integer**, since `width="160px"` is invalid and
 gets ignored, which leaves Outlook showing the image at its native size. A
 relative value (`100%`, `auto`) stays CSS-only rather than being guessed at.
+
+Every image gets `max-width:100%` and, unless you set `height` yourself,
+`height:auto`. A fixed pixel width alone overflowed the screen on mobile: the
+content got cut off, or the client zoomed the whole email out.
 
 ### Rounded corners
 
