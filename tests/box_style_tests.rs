@@ -186,3 +186,54 @@ fn a_styled_card_layout_renders_on_every_profile() {
         assert!(html.contains("coins.png"), "image perdue sur {}", profile.id);
     }
 }
+
+// ── Dimensions du bouton ────────────────────────────────────────────────────
+
+#[test]
+fn button_padding_and_font_size_are_configurable() {
+    // Les deux etaient ecrits en dur, alors que le panneau de proprietes
+    // proposait `padding` : on pouvait le saisir sans qu'il ne se passe rien.
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://x.fr" padding="20px 48px" font-size="18px">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    for id in ["gmail", "outlook_desktop"] {
+        let html = HtmlGenerator::generate(&doc, registry.get_profile(id).unwrap());
+
+        assert!(html.contains("font-size:18px"), "taille de police ignoree sur {id}");
+
+        // Outlook passe par VML, dont la geometrie ne connait pas le padding :
+        // seule la version HTML le porte.
+        if id != "outlook_desktop" {
+            assert!(html.contains("padding:20px 48px"), "marge interieure ignoree sur {id}");
+        }
+    }
+}
+
+#[test]
+fn button_keeps_sensible_defaults_without_those_attributes() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://x.fr">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+
+    assert!(html.contains("padding:12px 24px"), "defaut de marge modifie");
+    assert!(html.contains("font-size:16px"), "defaut de taille modifie");
+}
+
+#[test]
+fn a_percentage_radius_still_reaches_outlook_as_a_full_round() {
+    // 50 % veut dire « completement arrondi ». VML l'exprime aussi en
+    // pourcentage, mais de la moitie du plus petit cote : le maximum utile y
+    // est donc 50 aussi.
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://x.fr" border-radius="50%">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("outlook_desktop").unwrap());
+    assert!(html.contains(r#"arcsize="50%""#), "arrondi complet non transmis : {html}");
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+    assert!(html.contains("border-radius:50%"), "pourcentage perdu en CSS");
+}
