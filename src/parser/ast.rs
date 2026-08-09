@@ -56,6 +56,12 @@ pub enum UetlTag {
     Spacer,
     Interactive,
     Raw,
+    /// Bandeau avec image de fond et contenu par-dessus.
+    ///
+    /// Ce n'est pas une `ue-row` avec un fond : une image de fond exige, pour
+    /// Outlook, un rectangle VML dans lequel le contenu est reinjecte. La
+    /// structure generee n'a donc rien de commun avec celle d'une ligne.
+    Hero,
     /// Mise en forme *en ligne*, au milieu d'une phrase.
     ///
     /// Un attribut sur `ue-text` n'aurait pas suffi : ce qu'un email demande,
@@ -81,6 +87,7 @@ impl UetlTag {
             "ue-spacer" => Some(Self::Spacer),
             "ue-interactive" => Some(Self::Interactive),
             "ue-raw" => Some(Self::Raw),
+            "ue-hero" => Some(Self::Hero),
             "ue-bold" => Some(Self::Bold),
             "ue-italic" => Some(Self::Italic),
             _ => None,
@@ -101,6 +108,7 @@ impl UetlTag {
             Self::Spacer => "ue-spacer",
             Self::Interactive => "ue-interactive",
             Self::Raw => "ue-raw",
+            Self::Hero => "ue-hero",
             Self::Bold => "ue-bold",
             Self::Italic => "ue-italic",
         }
@@ -119,7 +127,14 @@ impl UetlTag {
         matches!(
             (self, child),
             (Email, Layout)
-                | (Layout, Row | Divider | Spacer)
+                | (Layout, Row | Divider | Spacer | Hero)
+                // Le hero porte son contenu directement : une colonne
+                // supplementaire n'apporterait rien et compliquerait le
+                // rectangle VML, ou le contenu doit etre reinjecte tel quel.
+                | (
+                    Hero,
+                    Heading | Text | Button | Image | Divider | Spacer | Raw
+                )
                 | (Row, Col)
                 | (
                     Col,

@@ -51,12 +51,12 @@ Minimal valid document:
 
 ## Tags
 
-There are exactly fourteen. No others are accepted.
+There are exactly fifteen. No others are accepted.
 
 | Tag | Role | Allowed children |
 |---|---|---|
 | `ue-email` | Document root | `ue-layout` |
-| `ue-layout` | Page container, sets max width | `ue-row`, `ue-divider`, `ue-spacer` |
+| `ue-layout` | Page container, sets max width | `ue-row`, `ue-hero`, `ue-divider`, `ue-spacer` |
 | `ue-row` | Horizontal band | `ue-col` |
 | `ue-col` | Column, holds the content | all content tags, plus `ue-row` |
 | `ue-heading` | Heading | text |
@@ -67,6 +67,7 @@ There are exactly fourteen. No others are accepted.
 | `ue-spacer` | Vertical space | — |
 | `ue-interactive` | Interactive block (AMP-style) | content tags |
 | `ue-raw` | Escape hatch for raw HTML | raw content |
+| `ue-hero` | Banner with a background image | content tags |
 | `ue-bold` | Inline bold, mid-sentence | text, `ue-italic` |
 | `ue-italic` | Inline italic, mid-sentence | text, `ue-bold` |
 
@@ -99,6 +100,7 @@ usual reason a template comes out unstyled.
 | `ue-image` | `src` + `alt` *(required)*, `width`, `height`, `border-radius`, `dark-src` |
 | `ue-divider` | `color`, `thickness`, `margin` |
 | `ue-spacer` | `height` |
+| `ue-hero` | `src` *(required)*, `background`, `width`, `height`, `padding`, `align` |
 
 `background` and `background-light` are interchangeable everywhere.
 
@@ -161,6 +163,36 @@ Outlook, and the cards touched.
 
 With `stack-on="mobile"`, the spacers are hidden once the row stacks: kept,
 they would become empty bands between the cards.
+
+### Background images
+
+`ue-hero` puts content **on top of** a background image. It sits directly
+under `ue-layout` and carries its children itself — no `ue-row`/`ue-col`.
+
+```html
+<ue-hero src="https://cdn.example.com/hero.jpg" background="#0F1B33" height="420px">
+  <ue-heading level="1" color="#FFFFFF" align="center">A headline over the image</ue-heading>
+  <ue-button href="https://example.com" align="center">Get started</ue-button>
+</ue-hero>
+```
+
+A background image in email is not a CSS property you set and forget. Outlook
+ignores `background-image`, and a large share of recipients block images
+entirely. Three mechanisms are emitted, each covering what the previous one
+does not:
+
+1. **`bgcolor`** — the fallback colour, and the only thing visible when images
+   are blocked. It is what decides whether your text stays readable, so choose
+   it against your text colour, not for decoration. Defaults to a dark grey;
+   set `background` yourself.
+2. **the HTML `background` attribute and the CSS declaration** — some clients
+   honour one, some the other.
+3. **a VML rectangle** for Outlook, with the content re-injected inside a
+   `v:textbox`. It is the only technique that puts text over an image in the
+   Word engine.
+
+VML knows neither percentages nor automatic sizing, so `width` and `height`
+must be pixel values — they default to 600×400.
 
 ### Inline emphasis
 
