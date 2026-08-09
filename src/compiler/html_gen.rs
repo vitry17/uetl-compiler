@@ -6,8 +6,22 @@ use super::css_inliner::{css_unit, normalize_color, style_attr};
 use super::profiles::Profile;
 use crate::parser::ast::{AttrValue, DarkModeOption, DocumentNode, ElementNode, Node, UetlTag};
 
+/// Pile de polices par defaut.
+///
+/// Le compilateur n'emettait aucune `font-family` : chaque client appliquait
+/// donc la sienne, souvent une serif dans Outlook, ce qui ne ressemblait a
+/// aucune charte graphique moderne. Cette pile ne contient que des polices
+/// reellement installees sur les postes clients — une webfont ne se charge
+/// pas dans la majorite des clients mail.
+const DEFAULT_FONT_STACK: &str =
+    "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+
 pub struct HtmlGenerator<'a> {
     profile: &'a Profile,
+    /// Police du document. Emise sur chaque bloc textuel plutot que sur le
+    /// seul `<body>` : le moteur Word d'Outlook n'herite pas la police dans
+    /// les tableaux, et toute la mise en page en est faite.
+    font_family: String,
     #[allow(dead_code)]
     indent_level: usize,
     next_id: Cell<usize>,
@@ -22,6 +36,10 @@ impl<'a> HtmlGenerator<'a> {
     pub fn generate(ast: &DocumentNode, profile: &'a Profile) -> String {
         let generator = Self {
             profile,
+            font_family: ast
+                .font_family
+                .clone()
+                .unwrap_or_else(|| DEFAULT_FONT_STACK.to_string()),
             indent_level: 0,
             next_id: Cell::new(0),
             style_rules: RefCell::new(Vec::new()),
@@ -314,7 +332,19 @@ impl<'a> HtmlGenerator<'a> {
             let table_attrs = self.box_marker_attrs(row, class, true);
             let table_style = style_attr(&self.box_style_decls(row));
 
-            let cells = cols.iter().fold(String::new(), |mut acc, col| {
+            // `gap` est une propriete flexbox : une cellule de tableau ne la
+            // connait pas, et l'attribut disparaissait purement et simplement
+            // pour Gmail et Outlook — c'est-a-dire la majorite des lecteurs.
+            // Les cartes se touchaient. On intercale donc de vraies cellules
+            // d'espacement, seule technique fiable en email.
+            let spacer = gap.as_deref().map(|width| self.gap_cell(width, class));
+
+            let cells = cols.iter().enumerate().fold(String::new(), |mut acc, (index, col)| {
+                if index > 0 {
+                    if let Some(spacer) = spacer.as_deref() {
+                        acc.push_str(spacer);
+                    }
+                }
                 let _ = write!(acc, "{}", self.render_col_cell(col));
                 acc
             });
@@ -336,6 +366,38 @@ impl<'a> HtmlGenerator<'a> {
 
         format!(
             "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{table_attrs}{table_style}>{rows}</table>"
+        )
+    }
+
+    /// Cellule d'espacement intercalee entre deux colonnes.
+    ///
+    /// `font-size:0` et `line-height:0` empechent le `&nbsp;` d'imposer une
+    /// hauteur minimale : sans lui, certains clients effondrent une cellule
+    /// vide et l'espacement disparait quand meme.
+    ///
+    /// Quand la ligne s'empile sur mobile, l'espaceur est masque : empile, il
+    /// deviendrait une bande vide entre chaque carte.
+    fn gap_cell(&self, width: &str, stack_class: Option<&str>) -> String {
+        let class_attr = match stack_class {
+            Some(row_class) if self.profile.supports("media_queries").is_supported() => {
+                let class = self.next_class("ue-gap");
+                self.push_style_rule(format!(
+                    "@media (max-width:600px){{.{row_class} .{class}{{display:none!important;}}}}"
+                ));
+                format!(" class=\"{class}\"")
+            }
+            _ => String::new(),
+        };
+
+        // L'attribut width d'une cellule attend un entier nu, comme celui
+        // d'une image : `width="12px"` serait invalide et ignore, et Outlook
+        // laisserait la cellule s'etirer.
+        let width_attr = pixel_count(width)
+            .map(|px| format!(" width=\"{px}\""))
+            .unwrap_or_default();
+
+        format!(
+            "<td{class_attr}{width_attr} style=\"width:{width};font-size:0;line-height:0;\">&nbsp;</td>"
         )
     }
 
@@ -362,7 +424,12 @@ impl<'a> HtmlGenerator<'a> {
         let color = attr_themed(&el.attrs, "color").as_deref().map(normalize_color);
         let font_size = attr_str(&el.attrs, "font-size").as_deref().map(css_unit);
         let align = attr_str(&el.attrs, "align");
-        let style = style_attr(&[("color", color), ("font-size", font_size), ("text-align", align)]);
+        let style = style_attr(&[
+            ("font-family", Some(self.font_family.clone())),
+            ("color", color),
+            ("font-size", font_size),
+            ("text-align", align),
+        ]);
         let class_attr = self.dark_mode_attrs(&el.attrs, "color-dark", "color");
         let content = self.gen_children(&el.children);
         format!("<h{level}{class_attr}{style}>{content}</h{level}>")
@@ -373,6 +440,7 @@ impl<'a> HtmlGenerator<'a> {
         let font_size = attr_str(&el.attrs, "font-size").as_deref().map(css_unit);
         let line_height = attr_str(&el.attrs, "line-height");
         let style = style_attr(&[
+            ("font-family", Some(self.font_family.clone())),
             ("color", color),
             ("font-size", font_size),
             ("line-height", line_height),
@@ -414,6 +482,8 @@ impl<'a> HtmlGenerator<'a> {
             .map(css_unit)
             .unwrap_or_else(|| "4px".to_string());
 
+        let font = &self.font_family;
+
         // `align` sur la table plutot qu'un text-align herite : un `<table>`
         // est de niveau bloc, `text-align:center` sur son parent ne le centre
         // donc pas. L'attribut HTML align, lui, est honore par tous les
@@ -431,18 +501,18 @@ impl<'a> HtmlGenerator<'a> {
             format!(
                 "<!--[if mso]>\
 <v:roundrect xmlns:v=\"urn:schemas-microsoft-com:vml\" href=\"{href}\" style=\"height:44px;v-text-anchor:middle;width:200px;\" arcsize=\"{arcsize}%\" stroke=\"f\" fillcolor=\"{background}\">\
-<center style=\"color:{color};font-family:Arial,sans-serif;font-size:16px;\">{label}</center></v:roundrect>\
+<center style=\"color:{color};font-family:{font};font-size:16px;\">{label}</center></v:roundrect>\
 <![endif]-->\
 <!--[if !mso]><!-->\
 <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"{align}><tr><td align=\"center\" bgcolor=\"{background}\" style=\"border-radius:{radius};\">\
-<a href=\"{href}\"{aria} style=\"font-size:16px;font-family:Arial,sans-serif;color:{color};text-decoration:none;padding:12px 24px;display:inline-block;\">{label}</a>\
+<a href=\"{href}\"{aria} style=\"font-size:16px;font-family:{font};color:{color};text-decoration:none;padding:12px 24px;display:inline-block;\">{label}</a>\
 </td></tr></table>\
 <!--<![endif]-->"
             )
         } else {
             format!(
                 "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"{align}><tr><td align=\"center\" bgcolor=\"{background}\" style=\"border-radius:{radius};\">\
-<a href=\"{href}\"{aria} style=\"font-size:16px;font-family:Arial,sans-serif;color:{color};text-decoration:none;padding:12px 24px;display:inline-block;\">{label}</a>\
+<a href=\"{href}\"{aria} style=\"font-size:16px;font-family:{font};color:{color};text-decoration:none;padding:12px 24px;display:inline-block;\">{label}</a>\
 </td></tr></table>"
             )
         }

@@ -184,7 +184,9 @@ fn raw_block_passes_through_literal_html_tags() {
     let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
 
     assert!(html.contains(r#"<div class="custom"><b>bold</b></div>"#));
-    assert!(html.contains("<p>after</p>"));
+    // Le paragraphe porte desormais la police du document : on verifie qu'il
+    // est bien rendu comme un <p>, pas la forme exacte de sa balise.
+    assert!(html.contains("<p style=") && html.contains(">after</p>"));
 }
 
 #[test]
@@ -195,7 +197,9 @@ fn self_closing_raw_block_has_no_content() {
 
     let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
 
-    assert!(html.contains("<p>after</p>"));
+    assert!(html.contains(">after</p>"));
+    // Un <ue-raw /> auto-fermant ne doit rien produire.
+    assert!(!html.contains("<div"));
 }
 
 const FULL_DOCUMENT: &str = r##"<ue-email lang="fr" dark-mode="auto">
