@@ -293,10 +293,14 @@ impl<'a> HtmlGenerator<'a> {
             return self.render_row_cells(el, &cols, flexbox_supported, Some(&class));
         }
 
-        if stack_on_mobile && !media_queries_supported {
-            // Pas de media queries disponibles : on force directement une colonne unique.
-            return self.render_stacked_cells(el, &cols);
-        }
+        // Un client sans media queries recevait un empilement PERMANENT : sur
+        // Outlook Desktop, deux colonnes cote a cote se retrouvaient l'une
+        // sous l'autre, en <tr> separes. Le raisonnement etait inverse — « pas
+        // de media queries, donc on ne saura pas empiler sur mobile, donc on
+        // empile toujours ». Outlook Desktop est un client de BUREAU : il
+        // n'est jamais le cas mobile, et il rend parfaitement des colonnes en
+        // tableau. On garde donc la mise en page cote a cote, et `stack-on`
+        // ne s'applique qu'aux clients qui savent la declencher.
 
         self.render_row_cells(el, &cols, flexbox_supported, None)
     }
@@ -353,20 +357,6 @@ impl<'a> HtmlGenerator<'a> {
                 "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{table_attrs}{table_style}><tr>{cells}</tr></table>"
             )
         }
-    }
-
-    fn render_stacked_cells(&self, row: &ElementNode, cols: &[&ElementNode]) -> String {
-        let table_attrs = self.box_marker_attrs(row, None, true);
-        let table_style = style_attr(&self.box_style_decls(row));
-
-        let rows = cols.iter().fold(String::new(), |mut acc, col| {
-            let _ = write!(acc, "<tr>{}</tr>", self.render_col_cell(col));
-            acc
-        });
-
-        format!(
-            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{table_attrs}{table_style}>{rows}</table>"
-        )
     }
 
     /// Cellule d'espacement intercalee entre deux colonnes.
@@ -529,9 +519,23 @@ impl<'a> HtmlGenerator<'a> {
         // Une image est en ligne : `align` sur la colonne parente la centre
         // deja via text-align. Seul l'arrondi manquait, tres courant sur les
         // visuels d'en-tete. Outlook l'ignore, l'image y reste a angles droits.
+        //
+        // `max-width:100%` est systematique : une largeur fixe en pixels
+        // debordait de l'ecran sur mobile, le contenu se retrouvant coupe ou
+        // l'email force en zoom arriere. `height:auto` l'accompagne, sans quoi
+        // l'image se deforme des qu'elle est reduite — sauf si l'auteur a fixe
+        // une hauteur, auquel cas c'est son choix qui prime.
+        let auto_height = if height.is_none() {
+            Some("auto".to_string())
+        } else {
+            None
+        };
+
         let style = style_attr(&[
             ("width", width.clone()),
+            ("max-width", Some("100%".to_string())),
             ("height", height.clone()),
+            ("height", auto_height),
             (
                 "border-radius",
                 attr_str(&el.attrs, "border-radius").as_deref().map(css_unit),
