@@ -94,8 +94,10 @@ fn a_row_without_gap_gets_no_spacer_at_all() {
 }
 
 #[test]
-fn the_spacer_disappears_when_the_row_stacks_on_mobile() {
-    // Empile, un espaceur deviendrait une bande vide entre chaque carte.
+fn the_spacer_becomes_vertical_spacing_when_the_row_stacks() {
+    // Le masquer collait les cartes les unes aux autres des que la fenetre
+    // etait etroite — c'est-a-dire dans la moitie des lectures. Empile,
+    // l'espaceur doit devenir une bande de la meme hauteur.
     let src = r##"<ue-email><ue-layout><ue-row gap="16px" stack-on="mobile">
 <ue-col><ue-text>A</ue-text></ue-col><ue-col><ue-text>B</ue-text></ue-col>
 </ue-row></ue-layout></ue-email>"##;
@@ -103,8 +105,9 @@ fn the_spacer_disappears_when_the_row_stacks_on_mobile() {
     let html = render(src, "gmail");
 
     assert!(html.contains("ue-gap"), "espaceur non identifiable : {html}");
+    assert!(!html.contains("display:none!important"), "espaceur masque a l'empilement");
     assert!(
-        html.contains("display:none!important"),
-        "espaceur non masque a l'empilement"
+        html.contains("height:16px!important"),
+        "l'espacement vertical ne reprend pas la valeur de gap : {html}"
     );
 }
