@@ -375,14 +375,16 @@ impl<'a> HtmlGenerator<'a> {
     /// hauteur minimale : sans lui, certains clients effondrent une cellule
     /// vide et l'espacement disparait quand meme.
     ///
-    /// Quand la ligne s'empile sur mobile, l'espaceur est masque : empile, il
-    /// deviendrait une bande vide entre chaque carte.
+    /// Quand la ligne s'empile sur mobile, l'espaceur ne disparait pas : il
+    /// devient une bande de la meme hauteur entre deux cartes. Le masquer
+    /// collait les cartes les unes aux autres des que la fenetre etait
+    /// etroite — c'est-a-dire dans la moitie des lectures.
     fn gap_cell(&self, width: &str, stack_class: Option<&str>) -> String {
         let class_attr = match stack_class {
             Some(row_class) if self.profile.supports("media_queries").is_supported() => {
                 let class = self.next_class("ue-gap");
                 self.push_style_rule(format!(
-                    "@media (max-width:600px){{.{row_class} .{class}{{display:none!important;}}}}"
+                    "@media (max-width:600px){{.{row_class} .{class}{{display:block!important;width:100%!important;height:{width}!important;}}}}"
                 ));
                 format!(" class=\"{class}\"")
             }
