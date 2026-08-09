@@ -285,6 +285,9 @@ fn validate_attrs(
             require_attr(name, attrs, "alt", span)
         }
         UetlTag::Heading => validate_heading_level(name, attrs, span),
+        // Sans image de fond, un hero n'est qu'une ligne : autant utiliser
+        // `ue-row`, dont le rendu est plus simple et mieux supporte.
+        UetlTag::Hero => require_attr(name, attrs, "src", span),
         _ => Ok(()),
     }
 }

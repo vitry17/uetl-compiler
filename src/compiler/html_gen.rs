@@ -217,6 +217,7 @@ impl<'a> HtmlGenerator<'a> {
             UetlTag::Spacer => self.gen_spacer(el),
             UetlTag::Interactive => self.gen_interactive(el),
             UetlTag::Raw => self.gen_raw(el),
+            UetlTag::Hero => self.gen_hero(el),
             // <strong> et <em> plutot que <b>/<i> : meme rendu partout, y
             // compris dans le moteur Word d'Outlook, et le sens est porte
             // pour les lecteurs d'ecran.
@@ -611,6 +612,73 @@ impl<'a> HtmlGenerator<'a> {
         } else {
             self.gen_children(&el.children)
         }
+    }
+
+    /// Bandeau avec image de fond et contenu par-dessus.
+    ///
+    /// Une image de fond en email n'est pas une propriete CSS qu'on pose et
+    /// qui marche : Outlook ignore `background-image`, et la moitie des
+    /// destinataires bloquent le chargement des images. Trois mecanismes se
+    /// superposent donc, chacun couvrant ce que le precedent ne couvre pas :
+    ///
+    /// 1. `bgcolor` sur la cellule — la couleur de repli, seule chose visible
+    ///    si l'image est bloquee. C'est elle qui doit garantir la lisibilite
+    ///    du texte, d'ou son caractere obligatoire dans les faits ;
+    /// 2. l'attribut HTML `background` ET la declaration CSS, pour les clients
+    ///    qui honorent l'un ou l'autre ;
+    /// 3. un rectangle VML pour Outlook, dans lequel le contenu est reinjecte
+    ///    via `v:textbox` — c'est la seule technique qui fasse tenir du texte
+    ///    par-dessus une image dans le moteur Word.
+    ///
+    /// VML exige des dimensions en pixels : `width` et `height` sont donc
+    /// bornees a des valeurs numeriques, avec des defauts alignes sur la
+    /// largeur usuelle d'un email.
+    fn gen_hero(&self, el: &ElementNode) -> String {
+        let src = attr_str(&el.attrs, "src").unwrap_or_default();
+        let fallback = attr_themed(&el.attrs, "background")
+            .as_deref()
+            .map(normalize_color)
+            .unwrap_or_else(|| "#1F2937".to_string());
+
+        let width = attr_str(&el.attrs, "width")
+            .as_deref()
+            .and_then(pixel_count)
+            .unwrap_or(600);
+        let height = attr_str(&el.attrs, "height")
+            .as_deref()
+            .and_then(pixel_count)
+            .unwrap_or(400);
+
+        let padding = attr_str(&el.attrs, "padding")
+            .as_deref()
+            .map(css_unit)
+            .unwrap_or_else(|| "40px 32px".to_string());
+        let align = attr_str(&el.attrs, "align").unwrap_or_else(|| "center".to_string());
+
+        let content = self.gen_children(&el.children);
+
+        let cell_style = format!(
+            "background-image:url('{src}');background-size:cover;background-position:center;padding:{padding};text-align:{align};"
+        );
+
+        let vml_open = if self.profile.quirk("vml_support") {
+            format!(
+                "<!--[if gte mso 9]><v:rect xmlns:v=\"urn:schemas-microsoft-com:vml\" fill=\"true\" stroke=\"false\" style=\"width:{width}px;height:{height}px;\"><v:fill type=\"frame\" src=\"{src}\" color=\"{fallback}\" /><v:textbox inset=\"0,0,0,0\"><![endif]-->"
+            )
+        } else {
+            String::new()
+        };
+
+        let vml_close = if self.profile.quirk("vml_support") {
+            "<!--[if gte mso 9]></v:textbox></v:rect><![endif]-->".to_string()
+        } else {
+            String::new()
+        };
+
+        format!(
+            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td background=\"{src}\" bgcolor=\"{fallback}\" valign=\"middle\" height=\"{height}\" style=\"{cell_style}\">{vml_open}<div style=\"font-family:{font};\">{content}</div>{vml_close}</td></tr></table>",
+            font = self.font_family
+        )
     }
 
     fn gen_raw(&self, el: &ElementNode) -> String {
