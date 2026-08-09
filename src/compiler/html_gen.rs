@@ -477,6 +477,19 @@ impl<'a> HtmlGenerator<'a> {
 
         let font = &self.font_family;
 
+        // padding et font-size etaient ecrits en dur : le panneau de
+        // proprietes proposait pourtant `padding`, qu'on pouvait saisir sans
+        // qu'il ne se passe rien. Un bouton compact ou un bouton pleine
+        // largeur etaient tout simplement hors de portee.
+        let padding = attr_str(&el.attrs, "padding")
+            .as_deref()
+            .map(css_unit)
+            .unwrap_or_else(|| "12px 24px".to_string());
+        let font_size = attr_str(&el.attrs, "font-size")
+            .as_deref()
+            .map(css_unit)
+            .unwrap_or_else(|| "16px".to_string());
+
         // `align` sur la table plutot qu'un text-align herite : un `<table>`
         // est de niveau bloc, `text-align:center` sur son parent ne le centre
         // donc pas. L'attribut HTML align, lui, est honore par tous les
@@ -494,18 +507,18 @@ impl<'a> HtmlGenerator<'a> {
             format!(
                 "<!--[if mso]>\
 <v:roundrect xmlns:v=\"urn:schemas-microsoft-com:vml\" href=\"{href}\" style=\"height:44px;v-text-anchor:middle;width:200px;\" arcsize=\"{arcsize}%\" stroke=\"f\" fillcolor=\"{background}\">\
-<center style=\"color:{color};font-family:{font};font-size:16px;\">{label}</center></v:roundrect>\
+<center style=\"color:{color};font-family:{font};font-size:{font_size};\">{label}</center></v:roundrect>\
 <![endif]-->\
 <!--[if !mso]><!-->\
 <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"{align}><tr><td align=\"center\" bgcolor=\"{background}\" style=\"border-radius:{radius};\">\
-<a href=\"{href}\"{aria} style=\"font-size:16px;font-family:{font};color:{color};text-decoration:none;padding:12px 24px;display:inline-block;\">{label}</a>\
+<a href=\"{href}\"{aria} style=\"font-size:{font_size};font-family:{font};color:{color};text-decoration:none;padding:{padding};display:inline-block;\">{label}</a>\
 </td></tr></table>\
 <!--<![endif]-->"
             )
         } else {
             format!(
                 "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"{align}><tr><td align=\"center\" bgcolor=\"{background}\" style=\"border-radius:{radius};\">\
-<a href=\"{href}\"{aria} style=\"font-size:16px;font-family:{font};color:{color};text-decoration:none;padding:12px 24px;display:inline-block;\">{label}</a>\
+<a href=\"{href}\"{aria} style=\"font-size:{font_size};font-family:{font};color:{color};text-decoration:none;padding:{padding};display:inline-block;\">{label}</a>\
 </td></tr></table>"
             )
         }
