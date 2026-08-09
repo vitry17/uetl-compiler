@@ -96,7 +96,7 @@ usual reason a template comes out unstyled.
 | `ue-col` | `background`, `background-light`, `background-dark`, `padding`, `border`, `border-radius`, `align` |
 | `ue-heading` | `level` *(required)*, `color`, `color-light`, `color-dark`, `font-size`, `align` |
 | `ue-text` | `color`, `color-light`, `color-dark`, `font-size`, `line-height`, `align` |
-| `ue-button` | `href` *(required)*, `background`, `color`, `theme`, `border-radius`, `align`, `accessible-label` |
+| `ue-button` | `href` *(required)*, `background`, `color`, `theme`, `border-radius`, `padding`, `font-size`, `align`, `accessible-label` |
 | `ue-image` | `src` + `alt` *(required)*, `width`, `height`, `border-radius`, `dark-src` |
 | `ue-divider` | `color`, `thickness`, `margin` |
 | `ue-spacer` | `height` |
@@ -267,6 +267,11 @@ Outlook ignores, and which would therefore never show the dark variant.
 | `danger` | `#d9534f` | `#ffffff` |
 
 Both work across every profile, including the Outlook VML fallback.
+
+`padding` and `font-size` size the button. Outlook's VML fallback has fixed
+geometry and ignores `padding`, so a very compact or very wide button will
+look closer to the default there — the colour, the label and the rounding do
+follow.
 
 ## Template variables
 
