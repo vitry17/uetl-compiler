@@ -1,5 +1,5 @@
+use indexmap::IndexMap;
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::fmt::Write;
 
 use super::css_inliner::{css_unit, normalize_color, style_attr};
@@ -13,8 +13,7 @@ use crate::parser::ast::{AttrValue, DarkModeOption, DocumentNode, ElementNode, N
 /// aucune charte graphique moderne. Cette pile ne contient que des polices
 /// reellement installees sur les postes clients — une webfont ne se charge
 /// pas dans la majorite des clients mail.
-const DEFAULT_FONT_STACK: &str =
-    "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+const DEFAULT_FONT_STACK: &str = "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 pub struct HtmlGenerator<'a> {
     profile: &'a Profile,
@@ -67,7 +66,12 @@ impl<'a> HtmlGenerator<'a> {
     ///   ce n'est pas un sélecteur CSS, leur moteur de rendu remplace lui-même
     ///   la couleur affichée par la valeur de cet attribut quand l'utilisateur
     ///   est en mode sombre — ignoré sans effet par tout autre client.
-    fn dark_mode_attrs(&self, attrs: &HashMap<String, AttrValue>, attr_name: &str, css_prop: &str) -> String {
+    fn dark_mode_attrs(
+        &self,
+        attrs: &IndexMap<String, AttrValue>,
+        attr_name: &str,
+        css_prop: &str,
+    ) -> String {
         let mut out = String::new();
 
         if let Some(class) = self.dark_media_class_for_attr(attrs, attr_name, css_prop) {
@@ -87,11 +91,15 @@ impl<'a> HtmlGenerator<'a> {
     /// poser sur l'élément. Sinon, ne fait rien.
     fn dark_media_class_for_attr(
         &self,
-        attrs: &HashMap<String, AttrValue>,
+        attrs: &IndexMap<String, AttrValue>,
         attr_name: &str,
         css_prop: &str,
     ) -> Option<String> {
-        if !self.profile.supports("dark_mode_media_query").is_supported() {
+        if !self
+            .profile
+            .supports("dark_mode_media_query")
+            .is_supported()
+        {
             return None;
         }
         let value = attr_str(attrs, attr_name)?;
@@ -103,7 +111,12 @@ impl<'a> HtmlGenerator<'a> {
         Some(class)
     }
 
-    fn dark_data_attr_for(&self, attrs: &HashMap<String, AttrValue>, attr_name: &str, css_prop: &str) -> Option<String> {
+    fn dark_data_attr_for(
+        &self,
+        attrs: &IndexMap<String, AttrValue>,
+        attr_name: &str,
+        css_prop: &str,
+    ) -> Option<String> {
         if !self.profile.quirk("dark_mode_data_attributes") {
             return None;
         }
@@ -132,13 +145,20 @@ impl<'a> HtmlGenerator<'a> {
         vec![
             (
                 "background",
-                attr_themed(&el.attrs, "background").as_deref().map(normalize_color),
+                attr_themed(&el.attrs, "background")
+                    .as_deref()
+                    .map(normalize_color),
             ),
-            ("padding", attr_str(&el.attrs, "padding").as_deref().map(css_unit)),
+            (
+                "padding",
+                attr_str(&el.attrs, "padding").as_deref().map(css_unit),
+            ),
             ("border", attr_str(&el.attrs, "border")),
             (
                 "border-radius",
-                attr_str(&el.attrs, "border-radius").as_deref().map(css_unit),
+                attr_str(&el.attrs, "border-radius")
+                    .as_deref()
+                    .map(css_unit),
             ),
             ("text-align", attr_str(&el.attrs, "align")),
         ]
@@ -161,7 +181,8 @@ impl<'a> HtmlGenerator<'a> {
     ) -> String {
         let mut classes: Vec<String> = base_class.into_iter().map(String::from).collect();
 
-        if let Some(class) = self.dark_media_class_for_attr(&el.attrs, "background-dark", "background")
+        if let Some(class) =
+            self.dark_media_class_for_attr(&el.attrs, "background-dark", "background")
         {
             classes.push(class);
         }
@@ -229,7 +250,10 @@ impl<'a> HtmlGenerator<'a> {
     /// Coquille HTML du document (doctype, head, meta dark-mode, body).
     fn gen_email(&self, doc: &DocumentNode, body: &str) -> String {
         let dark_meta = if doc.dark_mode == DarkModeOption::Auto
-            && self.profile.supports("dark_mode_media_query").is_supported()
+            && self
+                .profile
+                .supports("dark_mode_media_query")
+                .is_supported()
         {
             "\n<meta name=\"color-scheme\" content=\"light dark\">\n<meta name=\"supported-color-schemes\" content=\"light dark\">"
         } else {
@@ -243,8 +267,14 @@ impl<'a> HtmlGenerator<'a> {
             format!("\n<style>{}</style>", rules.join(""))
         };
 
+        let preheader = doc
+            .preview_text
+            .as_deref()
+            .map(preheader_block)
+            .unwrap_or_default();
+
         format!(
-            "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{dark_meta}{style_tag}\n</head>\n<body style=\"margin:0;padding:0;\">\n{body}\n</body>\n</html>",
+            "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{dark_meta}{style_tag}\n</head>\n<body style=\"margin:0;padding:0;\">{preheader}\n{body}\n</body>\n</html>",
             lang = doc.lang,
         )
     }
@@ -252,7 +282,9 @@ impl<'a> HtmlGenerator<'a> {
     fn gen_layout(&self, el: &ElementNode) -> String {
         let max_width = attr_str(&el.attrs, "max-width").unwrap_or_else(|| "600px".to_string());
         let padding = attr_str(&el.attrs, "padding").as_deref().map(css_unit);
-        let background = attr_themed(&el.attrs, "background").as_deref().map(normalize_color);
+        let background = attr_themed(&el.attrs, "background")
+            .as_deref()
+            .map(normalize_color);
 
         let outer_style = style_attr(&[("background", background)]);
         let class_attr = self.dark_mode_attrs(&el.attrs, "background-dark", "background");
@@ -325,7 +357,14 @@ impl<'a> HtmlGenerator<'a> {
             let cells = cols.iter().fold(String::new(), |mut acc, col| {
                 let col_attrs = self.box_marker_attrs(col, Some("ue-col"), false);
                 let mut col_decls = self.box_style_decls(col);
-                col_decls.push(("flex", Some("1".into())));
+                // `flex: 1` (repartition egale) reste le defaut : une largeur
+                // explicite bascule en `flex: 0 0 {width}` — base fixe, la
+                // colonne ne grandit ni ne retrecit, contrairement a `flex: 1`.
+                let flex = match attr_str(&col.attrs, "width") {
+                    Some(width) => format!("0 0 {}", css_unit(&width)),
+                    None => "1".to_string(),
+                };
+                col_decls.push(("flex", Some(flex)));
                 let col_style = style_attr(&col_decls);
                 let content = self.gen_col(col);
                 let _ = write!(acc, "<div{col_attrs}{col_style}>{content}</div>");
@@ -344,15 +383,18 @@ impl<'a> HtmlGenerator<'a> {
             // d'espacement, seule technique fiable en email.
             let spacer = gap.as_deref().map(|width| self.gap_cell(width, class));
 
-            let cells = cols.iter().enumerate().fold(String::new(), |mut acc, (index, col)| {
-                if index > 0 {
-                    if let Some(spacer) = spacer.as_deref() {
-                        acc.push_str(spacer);
+            let cells = cols
+                .iter()
+                .enumerate()
+                .fold(String::new(), |mut acc, (index, col)| {
+                    if index > 0 {
+                        if let Some(spacer) = spacer.as_deref() {
+                            acc.push_str(spacer);
+                        }
                     }
-                }
-                let _ = write!(acc, "{}", self.render_col_cell(col));
-                acc
-            });
+                    let _ = write!(acc, "{}", self.render_col_cell(col));
+                    acc
+                });
 
             format!(
                 "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{table_attrs}{table_style}><tr>{cells}</tr></table>"
@@ -402,10 +444,23 @@ impl<'a> HtmlGenerator<'a> {
     /// entre clients.
     fn render_col_cell(&self, col: &ElementNode) -> String {
         let attrs = self.box_marker_attrs(col, Some("ue-col"), true);
-        let style = style_attr(&self.box_style_decls(col));
+        let width = attr_str(&col.attrs, "width");
+
+        let mut decls = self.box_style_decls(col);
+        decls.push(("width", width.as_deref().map(css_unit)));
+        let style = style_attr(&decls);
+
+        // En plus de la declaration CSS : Outlook (moteur Word) applique
+        // `width` de facon bien plus fiable comme attribut HTML de la
+        // cellule que comme style — meme raisonnement que `bgcolor` dans
+        // `box_marker_attrs`. Contrairement a l'attribut `width` d'une
+        // image, celui d'une cellule de tableau accepte aussi un
+        // pourcentage brut ("62%"), pas seulement un entier de pixels.
+        let width_attr = width.as_deref().map(html_width_attr).unwrap_or_default();
+
         let content = self.gen_col(col);
 
-        format!("<td{attrs} valign=\"top\"{style}>{content}</td>")
+        format!("<td{attrs}{width_attr} valign=\"top\"{style}>{content}</td>")
     }
 
     fn gen_col(&self, el: &ElementNode) -> String {
@@ -413,8 +468,18 @@ impl<'a> HtmlGenerator<'a> {
     }
 
     fn gen_heading(&self, el: &ElementNode) -> String {
-        let level = attr_str(&el.attrs, "level").unwrap_or_else(|| "1".to_string());
-        let color = attr_themed(&el.attrs, "color").as_deref().map(normalize_color);
+        // `level` finit dans la position du nom de balise (`<h{level}>`), pas
+        // dans un attribut : `attr_escape` neutralise `<`/`>`/`"` mais pas
+        // un payload comme `1 onmouseover=alert(1)`, qui ne contient aucun de
+        // ces caractères et casserait quand même la balise. Whitelist plutôt
+        // qu'échappement.
+        let level = match attr_str(&el.attrs, "level").as_deref() {
+            Some(l @ ("1" | "2" | "3" | "4" | "5" | "6")) => l.to_string(),
+            _ => "1".to_string(),
+        };
+        let color = attr_themed(&el.attrs, "color")
+            .as_deref()
+            .map(normalize_color);
         let font_size = attr_str(&el.attrs, "font-size").as_deref().map(css_unit);
         let align = attr_str(&el.attrs, "align");
         let style = style_attr(&[
@@ -429,7 +494,9 @@ impl<'a> HtmlGenerator<'a> {
     }
 
     fn gen_text(&self, el: &ElementNode) -> String {
-        let color = attr_themed(&el.attrs, "color").as_deref().map(normalize_color);
+        let color = attr_themed(&el.attrs, "color")
+            .as_deref()
+            .map(normalize_color);
         let font_size = attr_str(&el.attrs, "font-size").as_deref().map(css_unit);
         let line_height = attr_str(&el.attrs, "line-height");
         let style = style_attr(&[
@@ -445,7 +512,7 @@ impl<'a> HtmlGenerator<'a> {
     }
 
     fn gen_button(&self, el: &ElementNode) -> String {
-        let href = attr_str(&el.attrs, "href").unwrap_or_default();
+        let href = attr_url(&el.attrs, "href").unwrap_or_default();
         let label = self.gen_children(&el.children);
         let accessible_label = attr_str(&el.attrs, "accessible-label");
 
@@ -453,8 +520,7 @@ impl<'a> HtmlGenerator<'a> {
         // Sans cette surcharge un bouton ne pouvait porter que l'une des trois
         // couleurs codees en dur, ce qui rendait toute charte graphique
         // inapplicable a l'element le plus charge en identite d'un email.
-        let (theme_background, theme_color) =
-            theme_colors(attr_str(&el.attrs, "theme").as_deref());
+        let (theme_background, theme_color) = theme_colors(attr_str(&el.attrs, "theme").as_deref());
         let background = attr_str(&el.attrs, "background")
             .as_deref()
             .map(normalize_color)
@@ -463,8 +529,11 @@ impl<'a> HtmlGenerator<'a> {
             .as_deref()
             .map(normalize_color)
             .unwrap_or(theme_color);
+        // `accessible_label` vient de `attr_str`, deja echappe — un second
+        // passage par `html_escape` ici re-echapperait les entites qu'il
+        // vient de produire (meme bug que le `&amp;` du lexer, cote sortie).
         let aria = accessible_label
-            .map(|l| format!(" aria-label=\"{}\"", html_escape(&l)))
+            .map(|l| format!(" aria-label=\"{l}\""))
             .unwrap_or_default();
 
         // Le rayon etait ecrit en dur a 4px : aucun bouton en pilule n'etait
@@ -525,11 +594,11 @@ impl<'a> HtmlGenerator<'a> {
     }
 
     fn gen_image(&self, el: &ElementNode) -> String {
-        let src = attr_str(&el.attrs, "src").unwrap_or_default();
+        let src = attr_url(&el.attrs, "src").unwrap_or_default();
         let alt = attr_str(&el.attrs, "alt").unwrap_or_default();
         let width = attr_str(&el.attrs, "width").as_deref().map(css_unit);
         let height = attr_str(&el.attrs, "height").as_deref().map(css_unit);
-        let dark_src = attr_str(&el.attrs, "dark-src");
+        let dark_src = attr_url(&el.attrs, "dark-src");
         // Une image est en ligne : `align` sur la colonne parente la centre
         // deja via text-align. Seul l'arrondi manquait, tres courant sur les
         // visuels d'en-tete. Outlook l'ignore, l'image y reste a angles droits.
@@ -552,7 +621,9 @@ impl<'a> HtmlGenerator<'a> {
             ("height", auto_height),
             (
                 "border-radius",
-                attr_str(&el.attrs, "border-radius").as_deref().map(css_unit),
+                attr_str(&el.attrs, "border-radius")
+                    .as_deref()
+                    .map(css_unit),
             ),
         ]);
         // L'attribut HTML width attend un entier NU : `width="160px"` est
@@ -566,7 +637,11 @@ impl<'a> HtmlGenerator<'a> {
             .unwrap_or_default();
 
         if let Some(dark_src) = dark_src {
-            if self.profile.supports("dark_mode_media_query").is_supported() {
+            if self
+                .profile
+                .supports("dark_mode_media_query")
+                .is_supported()
+            {
                 // Deux images superposees, basculees par media query, plutot que
                 // <picture> : Gmail supprime purement et simplement cette balise
                 // et Outlook l'ignore, de sorte que la variante sombre n'etait
@@ -598,10 +673,12 @@ impl<'a> HtmlGenerator<'a> {
 
     fn gen_divider(&self, el: &ElementNode) -> String {
         let color = attr_str(&el.attrs, "color")
-            .as_deref().map(normalize_color)
+            .as_deref()
+            .map(normalize_color)
             .unwrap_or_else(|| "#cccccc".to_string());
         let thickness = attr_str(&el.attrs, "thickness")
-            .as_deref().map(css_unit)
+            .as_deref()
+            .map(css_unit)
             .unwrap_or_else(|| "1px".to_string());
         let margin = attr_str(&el.attrs, "margin").as_deref().map(css_unit);
         let style = style_attr(&[
@@ -613,14 +690,17 @@ impl<'a> HtmlGenerator<'a> {
     }
 
     fn gen_spacer(&self, el: &ElementNode) -> String {
-        let height = attr_str(&el.attrs, "height").as_deref().map(css_unit).unwrap_or_else(|| "20px".to_string());
+        let height = attr_str(&el.attrs, "height")
+            .as_deref()
+            .map(css_unit)
+            .unwrap_or_else(|| "20px".to_string());
         format!(
             "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"height:{height};line-height:{height};font-size:1px;\">&nbsp;</td></tr></table>"
         )
     }
 
     fn gen_interactive(&self, el: &ElementNode) -> String {
-        if let Some(fallback) = attr_str(&el.attrs, "fallback-src") {
+        if let Some(fallback) = attr_url(&el.attrs, "fallback-src") {
             format!("<img src=\"{fallback}\" alt=\"\" />")
         } else {
             self.gen_children(&el.children)
@@ -647,7 +727,7 @@ impl<'a> HtmlGenerator<'a> {
     /// bornees a des valeurs numeriques, avec des defauts alignes sur la
     /// largeur usuelle d'un email.
     fn gen_hero(&self, el: &ElementNode) -> String {
-        let src = attr_str(&el.attrs, "src").unwrap_or_default();
+        let src = attr_url(&el.attrs, "src").unwrap_or_default();
         let fallback = attr_themed(&el.attrs, "background")
             .as_deref()
             .map(normalize_color)
@@ -709,7 +789,30 @@ impl<'a> HtmlGenerator<'a> {
 /// un entier nu (`width` sur `<img>`). Retourne None pour une valeur relative
 /// (`100%`, `auto`) : mieux vaut omettre l'attribut que le remplir de travers.
 fn pixel_count(value: &str) -> Option<u32> {
-    value.strip_suffix("px")?.trim().parse::<f64>().ok().map(|v| v.round() as u32)
+    value
+        .strip_suffix("px")?
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .map(|v| v.round() as u32)
+}
+
+/// Attribut HTML `width` d'une cellule de tableau (`<td width="...">`) —
+/// contrairement à celui d'une image, il accepte aussi un pourcentage brut
+/// ("62%"), pas seulement un entier de pixels. C'est cette forme, pas la
+/// seule déclaration CSS `width`, qu'Outlook (moteur Word) honore de façon
+/// fiable pour répartir des colonnes côte à côte dans des proportions
+/// précises. Une unité non reconnue (`em`, `vw`...) omet l'attribut plutôt
+/// que de le remplir de travers.
+fn html_width_attr(value: &str) -> String {
+    let value = value.trim();
+    if value.ends_with('%') {
+        format!(" width=\"{value}\"")
+    } else if let Some(px) = pixel_count(value).or_else(|| value.parse::<u32>().ok()) {
+        format!(" width=\"{px}\"")
+    } else {
+        String::new()
+    }
 }
 
 /// Traduit un `border-radius` CSS en `arcsize` VML, seul arrondi qu'Outlook
@@ -728,7 +831,7 @@ fn vml_arcsize(radius: &str) -> u32 {
 /// Lit `nom-light` en priorite, puis `nom`. Les deux ecritures coexistaient
 /// selon les balises — `ue-layout` n'acceptait que `background-light`, `ue-row`
 /// que `background` — ce qui rendait le langage imprevisible.
-fn attr_themed(attrs: &HashMap<String, AttrValue>, name: &str) -> Option<String> {
+fn attr_themed(attrs: &IndexMap<String, AttrValue>, name: &str) -> Option<String> {
     attr_str(attrs, &format!("{name}-light")).or_else(|| attr_str(attrs, name))
 }
 
@@ -740,12 +843,94 @@ fn theme_colors(theme: Option<&str>) -> (String, String) {
     }
 }
 
-fn attr_str(attrs: &HashMap<String, AttrValue>, name: &str) -> Option<String> {
+/// Valeur brute d'un attribut, **non échappée** — réservée aux rares appelants
+/// qui doivent inspecter le contenu avant de décider comment l'émettre
+/// (`attr_url`, ci-dessous). Tout code qui écrit une valeur d'attribut dans
+/// le HTML généré doit passer par `attr_str`/`attr_themed`, jamais par cette
+/// fonction directement : c'est `attr_str` qui échappe.
+fn attr_str_raw(attrs: &IndexMap<String, AttrValue>, name: &str) -> Option<String> {
     attrs.get(name).map(|v| match v {
         AttrValue::String(s) => s.clone(),
         AttrValue::Template(expr) => format!("{{{{{expr}}}}}"),
         AttrValue::Bool(b) => b.to_string(),
     })
+}
+
+/// Valeur d'un attribut, échappée pour une interpolation sûre dans un
+/// attribut HTML (`href="{v}"`, `style="...{v}..."`, etc).
+///
+/// Avant ce correctif, seul le texte des noeuds (`Node::Text`) et
+/// `accessible-label` passaient par `html_escape` — tout le reste (href,
+/// src, couleurs, padding, font-family...) sortait tel quel dans le HTML.
+/// Un template contenant `href="x" onmouseover="alert(1)` ou un `background`
+/// terminé par `"><script>` s'exécutait donc dans la preview (iframe) et
+/// chez le destinataire. Router l'échappement ici, au lieu de l'ajouter
+/// site par site, garantit qu'aucun appelant existant ou futur ne peut
+/// l'oublier — `attr_str` est le seul point de lecture d'un attribut.
+fn attr_str(attrs: &IndexMap<String, AttrValue>, name: &str) -> Option<String> {
+    attr_str_raw(attrs, name).as_deref().map(attr_escape)
+}
+
+/// Restreint une URL (`href`, `src`) à un schéma sûr avant échappement.
+///
+/// Un email est un vecteur direct : `javascript:`/`vbscript:` exécutent du
+/// code dans le contexte de la preview (iframe), `data:` peut embarquer du
+/// HTML arbitraire. `attr_escape` seul ne suffit pas ici — `javascript:alert(1)`
+/// ne contient aucun caractère à échapper, il reste dangereux tel quel.
+/// Un schéma refusé devient `#` plutôt que d'être recopié : mieux vaut un
+/// lien mort qu'un lien actif malveillant. `{{ expr }}` (placeholder de
+/// template, résolu plus tard par la plateforme) passe toujours, faute de
+/// pouvoir en valider le contenu au moment de la compilation.
+///
+/// `data:` est refusé même pour les images (`src`) : autoriser les images
+/// inline en `data:` est une extension possible, pas décidée ici.
+fn attr_url(attrs: &IndexMap<String, AttrValue>, name: &str) -> Option<String> {
+    const ALLOWED_SCHEMES: [&str; 4] = ["https:", "http:", "mailto:", "tel:"];
+
+    attr_str_raw(attrs, name).map(|raw| {
+        let trimmed = raw.trim();
+        let is_template = trimmed.starts_with("{{");
+        let lower = trimmed.to_ascii_lowercase();
+        let has_scheme = lower.contains(':');
+        let is_allowed_scheme = ALLOWED_SCHEMES.iter().any(|s| lower.starts_with(s));
+
+        if is_template || is_allowed_scheme || !has_scheme {
+            attr_escape(&raw)
+        } else {
+            "#".to_string()
+        }
+    })
+}
+
+/// Échappe une valeur pour une interpolation sûre dans un attribut HTML
+/// (entre guillemets doubles OU simples — `url('...')` en CSS inline en
+/// dépend aussi). `&` en premier : échapper les autres d'abord re-échapperait
+/// les `&amp;`/`&lt;`/... qu'ils viennent de produire.
+fn attr_escape(v: &str) -> String {
+    v.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+/// Bloc caché contenant le texte d'aperçu (« preheader »), affiché par la
+/// plupart des clients à côté de l'objet dans la liste des messages.
+///
+/// `&#8203;` (espace de largeur nulle) répété comble le reste de
+/// l'extrait auto-généré : sans ce remplissage, un client qui prend ses
+/// 100-150 premiers caractères visibles continue dans le corps de l'email
+/// juste après le texte d'aperçu, produisant un aperçu tronqué et incohérent
+/// ("Confirmez votre commande [reste du contenu qui suit]…").
+/// `mso-hide:all` masque le bloc dans Outlook, qui ignore `display:none`
+/// sur certains éléments (même technique que la variante dark-mode d'une
+/// image, voir `gen_image`).
+fn preheader_block(text: &str) -> String {
+    let escaped = html_escape(text);
+    let padding = "&#8203;".repeat(150);
+    format!(
+        "\n<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;\">{escaped}{padding}</div>"
+    )
 }
 
 fn html_escape(text: &str) -> String {
