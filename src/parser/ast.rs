@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 #[derive(Debug, Clone)]
 pub enum Node {
@@ -19,6 +19,13 @@ pub struct DocumentNode {
     /// s'applique a tout l'email, et la repeter sur chaque balise serait a la
     /// fois verbeux et fragile.
     pub font_family: Option<String>,
+    /// Texte d'apercu (« preheader »), declare sur `<ue-email preview-text="...">`.
+    ///
+    /// C'est le fragment que la plupart des clients affichent a cote de
+    /// l'objet dans la liste des messages. Sans lui, ils recopient les
+    /// premiers mots du corps — souvent "Voir dans le navigateur" ou une
+    /// image alt — ce que personne ne choisit volontairement.
+    pub preview_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,7 +44,12 @@ pub struct Span {
 #[derive(Debug, Clone)]
 pub struct ElementNode {
     pub tag: UetlTag,
-    pub attrs: HashMap<String, AttrValue>,
+    /// `IndexMap` plutôt que `HashMap` : préserve l'ordre d'écriture des
+    /// attributs dans le source. Sans ça, l'ordre des `warnings` retournés
+    /// par `/compile` (voir `compiler::lint`) dépendait de l'ordre de hachage
+    /// du process — deux compilations strictement identiques pouvaient
+    /// renvoyer leurs avertissements dans un ordre différent.
+    pub attrs: IndexMap<String, AttrValue>,
     pub children: Vec<Node>,
     pub span: Span,
 }
@@ -91,6 +103,95 @@ impl UetlTag {
             "ue-bold" => Some(Self::Bold),
             "ue-italic" => Some(Self::Italic),
             _ => None,
+        }
+    }
+
+    /// Attributs reconnus pour cette balise — utilisé pour avertir sur un
+    /// attribut inconnu (voir `crate::compiler::lint`). LANGUAGE.md le dit
+    /// lui-même : un attribut non reconnu est silencieusement ignoré, ce
+    /// qui est la cause la plus courante d'un template qui sort sans son
+    /// style. Cette liste doit rester synchronisée avec ce que
+    /// `html_gen.rs` lit réellement pour chaque balise — elle n'est pas
+    /// dérivée automatiquement, une divergence n'est détectable qu'à la
+    /// relecture.
+    pub fn known_attributes(&self) -> &'static [&'static str] {
+        use UetlTag::*;
+        match self {
+            Email => &["lang", "dark-mode", "font-family", "preview-text"],
+            Layout => &[
+                "max-width",
+                "padding",
+                "background",
+                "background-light",
+                "background-dark",
+            ],
+            Row => &[
+                "stack-on",
+                "gap",
+                "background",
+                "background-light",
+                "background-dark",
+                "padding",
+                "border",
+                "border-radius",
+                "align",
+            ],
+            Col => &[
+                "background",
+                "background-light",
+                "background-dark",
+                "padding",
+                "border",
+                "border-radius",
+                "align",
+                "width",
+            ],
+            Heading => &[
+                "level",
+                "color",
+                "color-light",
+                "color-dark",
+                "font-size",
+                "align",
+            ],
+            Text => &[
+                "color",
+                "color-light",
+                "color-dark",
+                "font-size",
+                "line-height",
+                "align",
+            ],
+            Button => &[
+                "href",
+                "accessible-label",
+                "theme",
+                "background",
+                "color",
+                "border-radius",
+                "padding",
+                "font-size",
+                "align",
+            ],
+            Image => &["src", "alt", "width", "height", "dark-src", "border-radius"],
+            Divider => &["color", "thickness", "margin"],
+            Spacer => &["height"],
+            Interactive => &["fallback-src"],
+            // Le contenu est recopié tel quel, sans interprétation — aucun
+            // attribut n'a de sens sur `ue-raw`.
+            Raw => &[],
+            Hero => &[
+                "src",
+                "background",
+                "background-light",
+                "width",
+                "height",
+                "padding",
+                "align",
+            ],
+            // Balises de mise en forme en ligne : aucun attribut, seul le
+            // contenu imbriqué compte.
+            Bold | Italic => &[],
         }
     }
 

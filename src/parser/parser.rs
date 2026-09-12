@@ -1,9 +1,22 @@
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
+use serde::Serialize;
+use serde_json::{json, Map, Value};
 use thiserror::Error;
 
 use super::ast::{AttrValue, DarkModeOption, DocumentNode, ElementNode, Node, Span, UetlTag};
 use crate::lexer::{LexError, Scanner, Token};
+
+/// Profondeur maximale d'imbrication d'éléments. `parse_element` est
+/// récursif sans autre garde-fou : un source de la forme
+/// `<ue-bold><ue-bold>…` répété des dizaines de milliers de fois provoque
+/// un débordement de pile, qui en Rust n'est pas récupérable — le
+/// processus entier est tué, pas seulement la requête en cours. Ce
+/// compilateur est partagé par tous les tenants, un seul template hostile
+/// (ou un bug côté appelant) coupe la compilation pour tout le monde
+/// jusqu'au redémarrage du conteneur. 64 niveaux dépasse largement toute
+/// mise en page email réelle (la plus profonde du projet en fait moins de 10).
+const MAX_DEPTH: usize = 64;
 
 #[derive(Debug, Error)]
 pub enum ParseError {
@@ -65,12 +78,115 @@ pub enum ParseError {
         column: usize,
     },
 
-    #[error("invalid heading level '{level}': must be between 1 and 6 (line {line}, column {column})")]
+    #[error(
+        "invalid heading level '{level}': must be between 1 and 6 (line {line}, column {column})"
+    )]
     InvalidHeadingLevel {
         level: String,
         line: usize,
         column: usize,
     },
+
+    #[error("template nesting too deep (max {max}) (line {line}, column {column})")]
+    TooDeep {
+        max: usize,
+        line: usize,
+        column: usize,
+    },
+}
+
+impl ParseError {
+    /// Position de l'erreur, utilisée par `to_diagnostic` — chaque variante
+    /// (y compris `Lex`, dont les champs viennent de `LexError`) porte déjà
+    /// une ligne/colonne, ce qui rend cette conversion triviale.
+    fn position(&self) -> (usize, usize) {
+        match self {
+            ParseError::Lex(e) => (e.line, e.column),
+            ParseError::UnexpectedToken { line, column, .. }
+            | ParseError::UnknownTag { line, column, .. }
+            | ParseError::UnclosedTag { line, column, .. }
+            | ParseError::MismatchedClosingTag { line, column, .. }
+            | ParseError::InvalidChild { line, column, .. }
+            | ParseError::RootMustBeEmail { line, column, .. }
+            | ParseError::MissingRequiredAttr { line, column, .. }
+            | ParseError::InvalidHeadingLevel { line, column, .. }
+            | ParseError::TooDeep { line, column, .. } => (*line, *column),
+        }
+    }
+
+    /// Code machine-readable, stable across wording changes to `Display`
+    /// (which callers — the editor's inline squiggles included — should
+    /// not depend on parsing).
+    fn code(&self) -> &'static str {
+        match self {
+            ParseError::Lex(_) => "lex_error",
+            ParseError::UnexpectedToken { .. } => "unexpected_token",
+            ParseError::UnknownTag { .. } => "unknown_tag",
+            ParseError::UnclosedTag { .. } => "unclosed_tag",
+            ParseError::MismatchedClosingTag { .. } => "mismatched_closing_tag",
+            ParseError::InvalidChild { .. } => "invalid_child",
+            ParseError::RootMustBeEmail { .. } => "root_must_be_email",
+            ParseError::MissingRequiredAttr { .. } => "missing_required_attr",
+            ParseError::InvalidHeadingLevel { .. } => "invalid_heading_level",
+            ParseError::TooDeep { .. } => "too_deep",
+        }
+    }
+
+    /// Champs spécifiques à la variante, exposés en JSON à plat aux côtés
+    /// de `code`/`message`/`line`/`column` — additif uniquement : le champ
+    /// `errors: Vec<String>` existant n'est jamais touché par ce type.
+    fn details(&self) -> Map<String, Value> {
+        let value = match self {
+            ParseError::Lex(_)
+            | ParseError::RootMustBeEmail { .. }
+            | ParseError::TooDeep { .. } => json!({}),
+            ParseError::UnexpectedToken {
+                expected, actual, ..
+            } => json!({ "expected": expected, "actual": format!("{actual:?}") }),
+            ParseError::UnknownTag { tag, .. } => json!({ "tag": tag }),
+            ParseError::UnclosedTag { tag, .. } => json!({ "tag": tag }),
+            ParseError::MismatchedClosingTag {
+                expected, actual, ..
+            } => json!({ "expected": expected, "actual": actual }),
+            ParseError::InvalidChild { parent, child, .. } => {
+                json!({ "parent": parent, "child": child })
+            }
+            ParseError::MissingRequiredAttr { tag, attr, .. } => {
+                json!({ "tag": tag, "attr": attr })
+            }
+            ParseError::InvalidHeadingLevel { level, .. } => json!({ "level": level }),
+        };
+        match value {
+            Value::Object(map) => map,
+            _ => Map::new(),
+        }
+    }
+
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        let (line, column) = self.position();
+        Diagnostic {
+            code: self.code().to_string(),
+            message: self.to_string(),
+            line,
+            column,
+            details: self.details(),
+        }
+    }
+}
+
+/// Représentation structurée d'une erreur de compilation, pensée pour être
+/// consommée par un éditeur (squiggles Monaco avec ligne/colonne réelles)
+/// plutôt que par une regex sur le message d'erreur textuel. Additive vis-à-vis
+/// de `errors: Vec<String>` (jamais retiré des réponses existantes) — voir
+/// `ValidateResponse`/`ApiError::ParseFailed` dans `api::handlers`.
+#[derive(Debug, Serialize)]
+pub struct Diagnostic {
+    pub code: String,
+    pub message: String,
+    pub line: usize,
+    pub column: usize,
+    #[serde(flatten)]
+    pub details: Map<String, Value>,
 }
 
 pub struct Parser {
@@ -83,7 +199,7 @@ impl Parser {
     pub fn parse_document(source: &str) -> Result<DocumentNode, ParseError> {
         let mut parser = Self::new(source)?;
         let root_span = parser.current_span;
-        let root = parser.parse_element(None)?;
+        let root = parser.parse_element(None, 0)?;
 
         if root.tag != UetlTag::Email {
             return Err(ParseError::RootMustBeEmail {
@@ -124,11 +240,17 @@ impl Parser {
             _ => None,
         };
 
+        let preview_text = match root.attrs.get("preview-text") {
+            Some(AttrValue::String(s)) => Some(s.clone()),
+            _ => None,
+        };
+
         Ok(DocumentNode {
             children: root.children,
             lang,
             dark_mode,
             font_family,
+            preview_text,
         })
     }
 
@@ -165,8 +287,21 @@ impl Parser {
         }
     }
 
-    fn parse_element(&mut self, parent: Option<UetlTag>) -> Result<ElementNode, ParseError> {
+    fn parse_element(
+        &mut self,
+        parent: Option<UetlTag>,
+        depth: usize,
+    ) -> Result<ElementNode, ParseError> {
         let span = self.current_span;
+
+        if depth >= MAX_DEPTH {
+            return Err(ParseError::TooDeep {
+                max: MAX_DEPTH,
+                line: span.line,
+                column: span.column,
+            });
+        }
+
         let name = match self.current.clone() {
             Token::TagOpen(name) => name,
             other => return Err(self.unexpected("a tag", other)),
@@ -196,7 +331,7 @@ impl Parser {
         }
         self.bump()?;
 
-        let mut attrs = HashMap::new();
+        let mut attrs = IndexMap::new();
         while let Token::AttrName(attr_name) = self.current.clone() {
             self.bump()?;
             let value = match self.current.clone() {
@@ -237,7 +372,7 @@ impl Parser {
                         self.bump()?;
                     }
                     Token::TagOpen(_) => {
-                        let child = self.parse_element(Some(tag))?;
+                        let child = self.parse_element(Some(tag), depth + 1)?;
                         children.push(Node::Element(child));
                     }
                     Token::Eof => {
@@ -275,7 +410,7 @@ fn parse_attr_value(value: &str) -> AttrValue {
 fn validate_attrs(
     tag: UetlTag,
     name: &str,
-    attrs: &HashMap<String, AttrValue>,
+    attrs: &IndexMap<String, AttrValue>,
     span: Span,
 ) -> Result<(), ParseError> {
     match tag {
@@ -294,7 +429,7 @@ fn validate_attrs(
 
 fn require_attr(
     name: &str,
-    attrs: &HashMap<String, AttrValue>,
+    attrs: &IndexMap<String, AttrValue>,
     attr: &str,
     span: Span,
 ) -> Result<(), ParseError> {
@@ -312,7 +447,7 @@ fn require_attr(
 
 fn validate_heading_level(
     name: &str,
-    attrs: &HashMap<String, AttrValue>,
+    attrs: &IndexMap<String, AttrValue>,
     span: Span,
 ) -> Result<(), ParseError> {
     match attrs.get("level") {
