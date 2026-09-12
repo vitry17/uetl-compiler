@@ -16,7 +16,9 @@ pub fn css_unit(value: &str) -> String {
     if value.is_empty() {
         return value.to_string();
     }
-    let is_bare_number = value.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '-');
+    let is_bare_number = value
+        .chars()
+        .all(|c| c.is_ascii_digit() || c == '.' || c == '-');
     if is_bare_number {
         format!("{value}px")
     } else {
