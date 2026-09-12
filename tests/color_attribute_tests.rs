@@ -21,7 +21,10 @@ fn heading_honours_plain_color() {
 <ue-heading level="1" color="#05073B">Titre</ue-heading>
 </ue-col></ue-row></ue-layout></ue-email>"##;
 
-    assert!(render(src).contains("color:#05073B"), "couleur de titre ignoree");
+    assert!(
+        render(src).contains("color:#05073B"),
+        "couleur de titre ignoree"
+    );
 }
 
 #[test]
@@ -30,7 +33,10 @@ fn text_honours_plain_color() {
 <ue-text color="#1F2937">Texte</ue-text>
 </ue-col></ue-row></ue-layout></ue-email>"##;
 
-    assert!(render(src).contains("color:#1F2937"), "couleur de texte ignoree");
+    assert!(
+        render(src).contains("color:#1F2937"),
+        "couleur de texte ignoree"
+    );
 }
 
 #[test]
@@ -42,5 +48,8 @@ fn color_light_still_wins_when_both_are_present() {
 
     let html = render(src);
     assert!(html.contains("color:#1F2937"), "color-light ignore");
-    assert!(!html.contains("color:#000000"), "color a pris le dessus sur color-light");
+    assert!(
+        !html.contains("color:#000000"),
+        "color a pris le dessus sur color-light"
+    );
 }

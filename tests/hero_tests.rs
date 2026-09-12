@@ -30,7 +30,10 @@ fn outlook_gets_a_vml_rectangle_with_the_content_inside_it() {
     let html = render(HERO, "outlook_desktop");
 
     assert!(html.contains("<v:rect"), "rectangle VML absent : {html}");
-    assert!(html.contains(r#"type="frame""#), "remplissage VML mal declare");
+    assert!(
+        html.contains(r#"type="frame""#),
+        "remplissage VML mal declare"
+    );
     assert!(html.contains("<v:textbox"), "textbox VML absente");
 
     // Le contenu doit se trouver DANS la textbox, sinon il s'affiche sous
@@ -43,7 +46,10 @@ fn outlook_gets_a_vml_rectangle_with_the_content_inside_it() {
         .next()
         .unwrap();
 
-    assert!(inside.contains("Un titre par-dessus l'image"), "titre hors de la textbox");
+    assert!(
+        inside.contains("Un titre par-dessus l'image"),
+        "titre hors de la textbox"
+    );
     assert!(inside.contains("Decouvrir"), "bouton hors de la textbox");
 }
 
@@ -53,7 +59,10 @@ fn the_vml_rectangle_carries_explicit_pixel_dimensions() {
     // pixels, le rectangle ne s'affiche pas du tout.
     let html = render(HERO, "outlook_desktop");
 
-    assert!(html.contains("height:420px"), "hauteur absente du rectangle VML");
+    assert!(
+        html.contains("height:420px"),
+        "hauteur absente du rectangle VML"
+    );
     assert!(html.contains("width:600px"), "largeur par defaut absente");
 }
 
@@ -61,9 +70,18 @@ fn the_vml_rectangle_carries_explicit_pixel_dimensions() {
 fn clients_without_vml_do_not_receive_the_conditional_markup() {
     let html = render(HERO, "gmail");
 
-    assert!(!html.contains("<v:rect"), "VML emis pour un client qui l'ignore");
-    assert!(html.contains("background-image:url("), "image de fond CSS absente");
-    assert!(html.contains("background-size:cover"), "cadrage de l'image absent");
+    assert!(
+        !html.contains("<v:rect"),
+        "VML emis pour un client qui l'ignore"
+    );
+    assert!(
+        html.contains("background-image:url("),
+        "image de fond CSS absente"
+    );
+    assert!(
+        html.contains("background-size:cover"),
+        "cadrage de l'image absent"
+    );
 }
 
 #[test]
@@ -98,7 +116,8 @@ fn the_background_attribute_doubles_the_css_declaration() {
 fn a_hero_without_a_source_is_rejected() {
     // Sans image de fond, un hero n'est qu'une ligne : autant utiliser
     // `ue-row`, dont le rendu est plus simple et mieux supporte.
-    let src = r#"<ue-email><ue-layout><ue-hero><ue-text>x</ue-text></ue-hero></ue-layout></ue-email>"#;
+    let src =
+        r#"<ue-email><ue-layout><ue-hero><ue-text>x</ue-text></ue-hero></ue-layout></ue-email>"#;
 
     let error = Parser::parse_document(src).unwrap_err().to_string();
     assert!(error.contains("src"), "erreur peu explicite : {error}");
@@ -108,7 +127,10 @@ fn a_hero_without_a_source_is_rejected() {
 fn a_hero_is_only_valid_directly_under_the_layout() {
     let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-hero src="x.jpg"></ue-hero></ue-col></ue-row></ue-layout></ue-email>"#;
 
-    assert!(Parser::parse_document(src).is_err(), "hero accepte dans une colonne");
+    assert!(
+        Parser::parse_document(src).is_err(),
+        "hero accepte dans une colonne"
+    );
 }
 
 #[test]
@@ -124,6 +146,10 @@ fn every_profile_renders_a_hero_without_losing_its_content() {
             "titre perdu sur {}",
             profile.id
         );
-        assert!(html.contains("Decouvrir"), "bouton perdu sur {}", profile.id);
+        assert!(
+            html.contains("Decouvrir"),
+            "bouton perdu sur {}",
+            profile.id
+        );
     }
 }

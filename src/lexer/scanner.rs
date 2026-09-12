@@ -64,10 +64,21 @@ impl Scanner {
 
         match self.peek() {
             None => Ok(Token::Eof),
-            Some('<') => self.read_left_angle(),
+            Some('<') if self.looks_like_tag_start() => self.read_left_angle(),
             Some('{') if self.peek_at(1) == Some('{') => self.read_template(),
             _ => self.read_text(),
         }
+    }
+
+    /// Vrai si le `<` à la position courante démarre vraisemblablement une
+    /// vraie balise (`<ue-...`, `</ue-...`, `<!--`) plutôt qu'un caractère
+    /// littéral (une inégalité mathématique, une citation de code). Toutes
+    /// les balises de ce langage commencent par `ue-` ; un `<` non suivi de
+    /// ce préfixe (ou de `/ue-`/`!--`) n'a aucune chance d'être une balise
+    /// valide, donc autant le traiter comme du texte plutôt que de faire
+    /// échouer la compilation sur « expected tag name after '<' ».
+    fn looks_like_tag_start(&self) -> bool {
+        self.starts_with("<!--") || self.starts_with("<ue-") || self.starts_with("</ue-")
     }
 
     fn next_token_in_tag(&mut self) -> Result<Token, LexError> {
@@ -248,6 +259,10 @@ impl Scanner {
                     self.advance();
                     return Ok(Token::AttrValue(value));
                 }
+                Some('&') => match self.try_decode_entity() {
+                    Some(decoded) => value.push(decoded),
+                    None => value.push(self.advance().unwrap()),
+                },
                 Some(_) => value.push(self.advance().unwrap()),
                 None => return Err(self.error("unterminated attribute value")),
             }
@@ -276,12 +291,79 @@ impl Scanner {
         let mut text = String::new();
         loop {
             match self.peek() {
-                None | Some('<') => break,
+                None => break,
+                Some('<') if self.looks_like_tag_start() => break,
                 Some('{') if self.peek_at(1) == Some('{') => break,
+                Some('&') => match self.try_decode_entity() {
+                    Some(decoded) => text.push(decoded),
+                    None => text.push(self.advance().unwrap()),
+                },
                 Some(_) => text.push(self.advance().unwrap()),
             }
         }
         Ok(Token::Text(text))
+    }
+
+    /// Décode une entité HTML (`&amp;`, `&#39;`, `&#x27;`...) à la position
+    /// courante (sur le `&`). Sans ce décodage, un auteur qui écrit `&amp;`
+    /// dans le source voit `&amp;amp;` en sortie : `html_escape`/`attr_escape`
+    /// ré-échappent le `&` que l'auteur avait déjà échappé lui-même. Couvre
+    /// les 5 entités nommées standard plus `nbsp` (l'espace insécable est
+    /// d'un usage courant en email) et les entités numériques — pas la table
+    /// HTML5 complète (des centaines d'entrées), hors de portée de ce correctif.
+    ///
+    /// Ne consomme rien et retourne `None` si la séquence n'est pas une
+    /// entité reconnue (`&` isolé, `&nbsp` sans `;`...) : le curseur est
+    /// restauré exactement, l'appelant traite alors le `&` comme littéral.
+    fn try_decode_entity(&mut self) -> Option<char> {
+        let (start_pos, start_line, start_col) = (self.pos, self.line, self.column);
+
+        self.advance(); // '&'
+        let mut entity = String::new();
+        loop {
+            match self.peek() {
+                Some(';') => {
+                    self.advance();
+                    if let Some(c) = decode_entity_name(&entity) {
+                        return Some(c);
+                    }
+                    break;
+                }
+                Some(c) if c.is_ascii_alphanumeric() || c == '#' => {
+                    entity.push(c);
+                    self.advance();
+                }
+                _ => break,
+            }
+        }
+
+        self.pos = start_pos;
+        self.line = start_line;
+        self.column = start_col;
+        None
+    }
+}
+
+fn decode_entity_name(entity: &str) -> Option<char> {
+    match entity {
+        "amp" => Some('&'),
+        "lt" => Some('<'),
+        "gt" => Some('>'),
+        "quot" => Some('"'),
+        "apos" => Some('\''),
+        "nbsp" => Some('\u{00A0}'),
+        _ => {
+            if let Some(hex) = entity
+                .strip_prefix("#x")
+                .or_else(|| entity.strip_prefix("#X"))
+            {
+                u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
+            } else if let Some(dec) = entity.strip_prefix('#') {
+                dec.parse::<u32>().ok().and_then(char::from_u32)
+            } else {
+                None
+            }
+        }
     }
 }
 

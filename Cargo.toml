@@ -2,7 +2,11 @@
 name = "uetl-compiler"
 version = "0.1.0"
 edition = "2021"
-license-file = "LICENSE"
+# Version minimale testée en CI (voir .github/workflows/ci.yml) — un
+# contributeur sur un toolchain plus ancien a une erreur claire de cargo au
+# lieu d'échecs de compilation isolés difficiles à rattacher à leur cause.
+rust-version = "1.86"
+license = "MIT OR Apache-2.0"
 description = "Compiler that transforms UETL (Universal Email Templating Language) into cross-client HTML"
 repository = "https://github.com/vitry17/uetl-compiler"
 
@@ -12,9 +16,10 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["json"] }
 thiserror = "1"
 tower-http = { version = "0.5", features = ["cors", "trace", "timeout", "compression-gzip"] }
+indexmap = { version = "2", features = ["serde"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
@@ -23,3 +28,20 @@ criterion = "0.5"
 [[bench]]
 name = "compile"
 harness = false
+
+[profile.release]
+# Ce binaire n'est qu'un service HTTP appelé en boucle chaude par le backend
+# (voir benches/ : ~25µs/compilation) — le temps de build supplémentaire de
+# la LTO complète et d'une seule unité de codegen est largement rentabilisé
+# par la latence par requête sur la durée de vie du conteneur.
+#
+# `panic` reste sur `unwind` (le défaut) délibérément, malgré le coût binaire :
+# `parse_document_blocking` (voir `api::handlers`) compte sur tokio pour
+# rattraper un panic dans `spawn_blocking` sous forme de `JoinError` — avec
+# `panic = "abort"`, un seul document hostile qui déclenche un panic (bug de
+# parsing non prévu) tuerait tout le process au lieu de faire échouer
+# uniquement sa propre requête, exactement le risque que la limite de
+# profondeur/spawn_blocking existent pour éviter.
+lto = "fat"
+codegen-units = 1
+strip = true
