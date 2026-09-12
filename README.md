@@ -24,11 +24,11 @@ compiles to a VML `<v:roundrect>` + table fallback for Outlook Desktop, and a pl
 
 ## Status
 
-Early but functional: lexer, recursive-descent parser with semantic validation, HTML generator, and an HTTP API all work end-to-end with 50 passing tests. Dark mode is supported on headings, text, layout backgrounds, and images. What's missing: a CLI/visual preview tool, AMP-style interactivity, and a published crate. Contributions and bug reports on real-world rendering quirks are very welcome.
+Early but functional: lexer, recursive-descent parser with semantic validation, HTML generator, and an HTTP API all work end-to-end with over 150 passing tests. Dark mode is supported on headings, text, layout backgrounds, and images. Attribute values are HTML-escaped and `href`/`src` are restricted to safe URL schemes — templates are user-authored and previewed in an iframe before sending, so this isn't optional. `/compile` and `/validate` also return `warnings` for attributes a tag never reads, the most common reason a template comes out unstyled, plus structured `diagnostics` with real line/column for editor integration. Parsing is bounded (max nesting depth, 256KB source cap) and runs off the async event loop; profile JSON is schema-checked at load, `/health` forces that check instead of only catching a broken profile at the first real compile; `/compile/all` output is deterministically ordered. What's missing: a CLI/visual preview tool, real AMP-for-Email content injection (`ue-interactive` today only renders a static fallback image or text), multi-error recovery (the parser stops at the first error), and a published crate. Contributions and bug reports on real-world rendering quirks are very welcome.
 
 ## Language reference
 
-**[docs/LANGUAGE.md](docs/LANGUAGE.md)** — the twelve tags, the hierarchy the
+**[docs/LANGUAGE.md](docs/LANGUAGE.md)** — the fifteen tags, the hierarchy the
 parser enforces, required attributes, and the exact error messages. Worth
 reading before writing a template by hand, and worth pointing any code
 generator at: without it, a plausible-looking `<uetl>` or `<div>` gets written
@@ -37,16 +37,26 @@ and rejected.
 ## Quickstart
 
 ```bash
-cargo test            # 50 tests: lexer, parser, profiles, html generator, HTTP API
-cargo run             # serves on :4001
+cargo test            # lexer, parser, profiles, html generator, security, determinism, HTTP API
+cargo run             # serves on :4001 (binds 127.0.0.1 by default, see Configuration)
 ```
 
 Or with Docker:
 
 ```bash
 docker build -t uetl-compiler .
-docker run -p 4001:4001 uetl-compiler
+docker run -p 4001:4001 -e COMPILER_BIND=0.0.0.0:4001 uetl-compiler
 ```
+
+## Configuration
+
+All optional, read once at startup:
+
+| Variable                          | Default            | Purpose                                             |
+|------------------------------------|---------------------|------------------------------------------------------|
+| `COMPILER_BIND`                    | `127.0.0.1:4001`    | Listen address — set to `0.0.0.0:4001` in a container so other containers/the host can reach it |
+| `COMPILER_CORS_ORIGIN`             | none (no CORS)      | A single allowed origin, or `*`. Only relevant if a browser ever calls this API directly — the intended caller is a backend, not a browser |
+| `COMPILER_RATE_LIMIT_PER_SECOND`   | `50`                | Global (not per-caller) request cap, a guard against a runaway loop rather than a capacity limit |
 
 ## Performance
 
@@ -68,11 +78,13 @@ Comfortably under the 50ms/request target — there's room to add real-world com
 
 | Method | Route          | Body                          | Description                                  |
 |--------|----------------|--------------------------------|-----------------------------------------------|
-| GET    | `/health`      | —                              | Liveness check                                |
-| GET    | `/profiles`    | —                              | List of available client profile IDs          |
-| POST   | `/validate`    | `{ "uetl": "..." }`            | Parse without compiling; returns errors if any|
+| GET    | `/health`      | —                              | Liveness check — also loads and schema-validates every bundled profile, so a broken profile fails this instead of the first real compile |
+| GET    | `/profiles`    | —                              | `{ "profiles": [{ "id", "name", "version" }, ...] }`, sorted by id |
+| POST   | `/validate`    | `{ "uetl": "..." }`            | Parse without compiling; `errors: string[]` plus structured `diagnostics: Diagnostic[]` (code/line/column) |
 | POST   | `/compile`     | `{ "uetl": "...", "client": "gmail" }` | Compile for one client                |
-| POST   | `/compile/all` | `{ "uetl": "..." }`            | Compile for every known client at once        |
+| POST   | `/compile/all` | `{ "uetl": "..." }`            | Compile for every known client at once, `results` sorted by client id |
+
+A source over 256KB is rejected with `413` (`source_too_large`) before parsing. `/compile` and `/compile/all` error bodies are `{ "error": { "code", "message", "line", "column", ... } }` — `code` is specific (`unknown_tag`, `missing_required_attr`, `too_deep`, etc.), not a generic `"parse_error"`.
 
 ```bash
 curl -X POST localhost:4001/compile \
@@ -86,21 +98,44 @@ Each client is a JSON profile under `src/profiles/`, describing CSS support (`fu
 
 ## Components
 
-| Tag             | Required attrs | Key optional attrs                                  |
-|-----------------|-----------------|-------------------------------------------------------|
-| `<ue-email>`    | —               | `lang`, `dark-mode="auto"`                            |
-| `<ue-layout>`   | —               | `max-width`, `background-light`/`background-dark`, `padding` |
-| `<ue-row>`      | —               | `stack-on="mobile"`, `gap`, `background`, `padding`   |
-| `<ue-col>`      | —               | — (groups content inside a `<ue-row>`)                |
-| `<ue-heading>`  | `level` (1–6)   | `color-light`/`color-dark`, `font-size`, `align`      |
-| `<ue-text>`     | —               | `color-light`/`color-dark`, `font-size`, `line-height`|
-| `<ue-button>`   | `href`          | `theme`, `accessible-label`                           |
-| `<ue-image>`    | `src`, `alt`    | `width`, `height`, `dark-src`                         |
-| `<ue-divider>`  | —               | `color`, `thickness`, `margin`                        |
-| `<ue-spacer>`   | —               | `height` (default `20px`)                             |
-| `<ue-raw>`      | —               | embeds literal HTML untouched (escape hatch)           |
+Fifteen tags. **[docs/LANGUAGE.md](docs/LANGUAGE.md)** is the authoritative,
+always-up-to-date reference (attribute lists, hierarchy, error messages) —
+this table is a quick-glance summary, kept in sync with it.
 
-Any attribute value can be a template token, e.g. `href="{{cta_url}}"` — it's preserved as-is in the compiled output for the calling backend to substitute.
+| Tag              | Required attrs | Key optional attrs                                              |
+|------------------|-----------------|-------------------------------------------------------------------|
+| `<ue-email>`     | —               | `lang`, `dark-mode="auto"`, `font-family`, `preview-text`         |
+| `<ue-layout>`    | —               | `max-width`, `background`/`-light`/`-dark`, `padding`             |
+| `<ue-row>`       | —               | `stack-on="mobile"`, `gap`, `background`, `padding`, `align`      |
+| `<ue-col>`       | —               | `background`, `padding`, `border`, `border-radius`, `align`, `width` |
+| `<ue-heading>`   | `level` (1–6)   | `color`/`-light`/`-dark`, `font-size`, `align`                    |
+| `<ue-text>`      | —               | `color`/`-light`/`-dark`, `font-size`, `line-height`, `align`     |
+| `<ue-button>`    | `href`          | `background`, `color`, `theme`, `border-radius`, `padding`, `font-size`, `align`, `accessible-label` |
+| `<ue-image>`     | `src`, `alt`    | `width`, `height`, `border-radius`, `dark-src`                    |
+| `<ue-divider>`   | —               | `color`, `thickness`, `margin`                                    |
+| `<ue-spacer>`    | —               | `height` (default `20px`)                                         |
+| `<ue-interactive>` | —             | `fallback-src` — renders a static fallback image; nested tags aren't supported yet |
+| `<ue-hero>`      | `src`           | `background`, `width`, `height`, `padding`, `align` — banner with content over a background image |
+| `<ue-bold>` / `<ue-italic>` | —    | inline emphasis mid-sentence, nestable, valid inside text/heading/button |
+| `<ue-raw>`       | —               | embeds literal HTML untouched, never escaped (escape hatch — see Security) |
+
+Any attribute value can be a template token, e.g. `href="{{cta_url}}"` — it's preserved as-is in the compiled output for the calling backend to substitute. `href`/`src` still get scheme-validated at compile time; the substituted value is the calling backend's responsibility to sanitize.
+
+## Security
+
+Templates are user-authored, previewed in an iframe, and sent to real
+recipients — an unescaped attribute or an unrestricted URL scheme is a
+stored XSS and a phishing vector, not a theoretical concern. The compiler
+therefore:
+
+- HTML-escapes every attribute value before interpolating it (not just
+  text content and `accessible-label`).
+- Restricts `href`/`src` to `https:`, `http:`, `mailto:`, `tel:`, or a
+  `{{ template }}` placeholder (resolved later by the caller) — anything
+  else, including `javascript:`/`data:`/`vbscript:`, becomes `#`.
+- Treats `<ue-raw>` as what it is: an escape hatch that emits its content
+  completely unescaped. Restrict who can author templates using it at the
+  platform level — the compiler has no concept of roles or trust.
 
 ## Compared to MJML
 
@@ -109,7 +144,7 @@ Any attribute value can be a template token, e.g. `href="{{cta_url}}"` — it's 
 | Output | One HTML for all clients | Per-client optimized HTML |
 | Client capabilities | Hardcoded in the compiler | JSON profiles, editable without touching Rust |
 | Dark mode | Manual media queries | `color-dark`/`background-dark` attrs, compiled automatically |
-| Governance | Mailgun (private company) | Source-available (BSL 1.1 → Apache 2.0 in 2030) |
+| Governance | Mailgun (private company) | Open source (MIT / Apache 2.0) |
 
 ## Architecture
 
@@ -128,4 +163,4 @@ Bug reports on real client rendering (with the UETL source, target client, and s
 
 ## License
 
-[Business Source License 1.1](LICENSE) — free to read, modify, and use for any purpose, including internal commercial use. The only thing it restricts is reselling or hosting the compiler's functionality as a competing service to third parties; that requires a commercial license from the Licensor. On 2030-06-30, this license automatically converts to Apache License 2.0 and the project becomes fully open source with no restrictions.
+Dual-licensed under either of [MIT](LICENSE-MIT) or [Apache License, Version 2.0](LICENSE-APACHE), at your option — the convention used across the Rust ecosystem. No restriction on hosting or reselling: the moat, if any, lives in the platform built on top of this compiler, not in the compiler itself.
