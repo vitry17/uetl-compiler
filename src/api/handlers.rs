@@ -37,6 +37,16 @@ async fn parse_document_blocking(uetl: String) -> Result<DocumentNode, ParseErro
         .expect("parse_document panicked")
 }
 
+/// Comme `parse_document_blocking`, mais via `parse_document_tolerant` —
+/// utilisé uniquement par `/validate` (voir sa documentation dans
+/// `parser::parser` pour pourquoi `/compile`/`/compile/all` ne l'utilisent
+/// jamais).
+async fn parse_document_tolerant_blocking(uetl: String) -> (Option<DocumentNode>, Vec<ParseError>) {
+    tokio::task::spawn_blocking(move || Parser::parse_document_tolerant(&uetl))
+        .await
+        .expect("parse_document_tolerant panicked")
+}
+
 pub async fn health() -> Json<Value> {
     // Force le chargement (et donc la validation de schéma, voir
     // `ProfileRegistry::load`) des profils dès le premier health check,
@@ -186,18 +196,16 @@ pub async fn validate(
     Json(req): Json<ValidateRequest>,
 ) -> Result<Json<ValidateResponse>, ApiError> {
     check_source_size(&req.uetl)?;
-    Ok(match parse_document_blocking(req.uetl).await {
-        Ok(document) => Json(ValidateResponse {
-            valid: true,
-            errors: Vec::new(),
-            warnings: collect_warnings(&document),
-            diagnostics: Vec::new(),
-        }),
-        Err(e) => Json(ValidateResponse {
-            valid: false,
-            errors: vec![e.to_string()],
-            warnings: Vec::new(),
-            diagnostics: vec![e.to_diagnostic()],
-        }),
-    })
+    // Tolérant, pas `parse_document_blocking` : `/validate` alimente les
+    // squiggles d'un éditeur, qui veut voir toutes les erreurs d'une passe
+    // (ex: deux boutons sans `href` dans le même document) plutôt que
+    // d'en corriger une, relancer `/validate`, en découvrir une autre.
+    let (document, errors) = parse_document_tolerant_blocking(req.uetl).await;
+    let warnings = document.as_ref().map(collect_warnings).unwrap_or_default();
+    Ok(Json(ValidateResponse {
+        valid: errors.is_empty(),
+        errors: errors.iter().map(ToString::to_string).collect(),
+        warnings,
+        diagnostics: errors.iter().map(ParseError::to_diagnostic).collect(),
+    }))
 }

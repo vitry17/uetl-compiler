@@ -396,6 +396,279 @@ impl Parser {
             span,
         })
     }
+
+    /// Comme `parse_document`, mais ne s'arrête pas à la première erreur :
+    /// une erreur *locale* à un élément (balise inconnue, enfant interdit à
+    /// cet endroit, attribut requis manquant, niveau de titre invalide) est
+    /// enregistrée puis cet élément est ignoré, et le reste du document
+    /// continue d'être analysé — pour qu'un éditeur puisse signaler toutes
+    /// les erreurs d'une passe au lieu d'obliger à corriger puis relancer
+    /// `/validate` une erreur à la fois.
+    ///
+    /// Une erreur *structurelle* (balise jamais refermée, fermeture qui ne
+    /// correspond à rien, jeton inattendu, imbrication trop profonde) reste
+    /// fatale : au-delà de ce point le flux de jetons ne permet plus de
+    /// distinguer de façon fiable où reprendre, et tenter quand même
+    /// produirait des diagnostics en cascade sans rapport avec la vraie
+    /// erreur. `/compile` et `/compile/all` n'utilisent jamais ce chemin —
+    /// ils doivent échouer net plutôt que de générer un HTML incomplet à
+    /// partir d'un arbre dont des morceaux ont été tacitement ignorés.
+    pub fn parse_document_tolerant(source: &str) -> (Option<DocumentNode>, Vec<ParseError>) {
+        let mut errors = Vec::new();
+        let mut parser = match Self::new(source) {
+            Ok(p) => p,
+            Err(e) => {
+                errors.push(e);
+                return (None, errors);
+            }
+        };
+        let root_span = parser.current_span;
+        let root = match parser.parse_element_tolerant(None, 0, &mut errors) {
+            Ok(root) => root,
+            Err(e) => {
+                errors.push(e);
+                return (None, errors);
+            }
+        };
+
+        if root.tag != UetlTag::Email {
+            errors.push(ParseError::RootMustBeEmail {
+                tag: root.tag.tag_name().to_string(),
+                line: root_span.line,
+                column: root_span.column,
+            });
+            return (None, errors);
+        }
+
+        // Voir le commentaire équivalent dans `parse_document`.
+        loop {
+            match &parser.current {
+                Token::Text(text) if text.trim().is_empty() => {}
+                Token::Comment => {}
+                _ => break,
+            }
+            if let Err(e) = parser.bump() {
+                errors.push(e);
+                return (None, errors);
+            }
+        }
+
+        if !matches!(parser.current, Token::Eof) {
+            errors.push(parser.unexpected("end of input", parser.current.clone()));
+            return (None, errors);
+        }
+
+        let lang = match root.attrs.get("lang") {
+            Some(AttrValue::String(s)) => s.clone(),
+            _ => "en".to_string(),
+        };
+
+        let dark_mode = match root.attrs.get("dark-mode") {
+            Some(AttrValue::String(s)) if s == "auto" => DarkModeOption::Auto,
+            Some(AttrValue::String(s)) if s == "manual" => DarkModeOption::Manual,
+            _ => DarkModeOption::Off,
+        };
+
+        let font_family = match root.attrs.get("font-family") {
+            Some(AttrValue::String(s)) => Some(s.clone()),
+            _ => None,
+        };
+
+        let preview_text = match root.attrs.get("preview-text") {
+            Some(AttrValue::String(s)) => Some(s.clone()),
+            _ => None,
+        };
+
+        let document = DocumentNode {
+            children: root.children,
+            lang,
+            dark_mode,
+            font_family,
+            preview_text,
+        };
+        (Some(document), errors)
+    }
+
+    /// Variante de `parse_element` utilisée par `parse_document_tolerant` —
+    /// voir sa documentation pour la distinction erreur locale/structurelle.
+    fn parse_element_tolerant(
+        &mut self,
+        parent: Option<UetlTag>,
+        depth: usize,
+        errors: &mut Vec<ParseError>,
+    ) -> Result<ElementNode, ParseError> {
+        let span = self.current_span;
+
+        if depth >= MAX_DEPTH {
+            return Err(ParseError::TooDeep {
+                max: MAX_DEPTH,
+                line: span.line,
+                column: span.column,
+            });
+        }
+
+        let name = match self.current.clone() {
+            Token::TagOpen(name) => name,
+            other => return Err(self.unexpected("a tag", other)),
+        };
+
+        let tag = UetlTag::from_name(&name).ok_or_else(|| ParseError::UnknownTag {
+            tag: name.clone(),
+            line: span.line,
+            column: span.column,
+        })?;
+
+        if let Some(parent_tag) = parent {
+            if !parent_tag.allows_child(tag) {
+                return Err(ParseError::InvalidChild {
+                    parent: parent_tag.tag_name().to_string(),
+                    child: name.clone(),
+                    line: span.line,
+                    column: span.column,
+                });
+            }
+        }
+
+        if tag == UetlTag::Raw {
+            self.scanner.enter_raw_mode(&name);
+        }
+        self.bump()?;
+
+        let mut attrs = IndexMap::new();
+        while let Token::AttrName(attr_name) = self.current.clone() {
+            self.bump()?;
+            let value = match self.current.clone() {
+                Token::AttrValue(v) => v,
+                other => return Err(self.unexpected("an attribute value", other)),
+            };
+            self.bump()?;
+            attrs.insert(attr_name, parse_attr_value(&value));
+        }
+
+        let mut children = Vec::new();
+        if matches!(self.current, Token::SelfClose) {
+            self.bump()?;
+        } else {
+            loop {
+                match self.current.clone() {
+                    Token::TagClose(close_name) => {
+                        if close_name != name {
+                            return Err(ParseError::MismatchedClosingTag {
+                                expected: name.clone(),
+                                actual: close_name,
+                                line: self.current_span.line,
+                                column: self.current_span.column,
+                            });
+                        }
+                        self.bump()?;
+                        break;
+                    }
+                    Token::Text(text) => {
+                        children.push(Node::Text(text));
+                        self.bump()?;
+                    }
+                    Token::Template(expr) => {
+                        children.push(Node::Template(expr));
+                        self.bump()?;
+                    }
+                    Token::Comment => {
+                        self.bump()?;
+                    }
+                    Token::TagOpen(_) => {
+                        match self.parse_element_tolerant(Some(tag), depth + 1, errors) {
+                            Ok(child) => children.push(Node::Element(child)),
+                            // Erreur locale à cet enfant : on la note, on saute
+                            // tout son sous-arbre (encore non consommé — voir
+                            // `skip_element`), et on continue avec le frère
+                            // suivant plutôt que d'abandonner tout le document.
+                            Err(
+                                e @ (ParseError::UnknownTag { .. }
+                                | ParseError::InvalidChild { .. }),
+                            ) => {
+                                errors.push(e);
+                                self.skip_element()?;
+                            }
+                            // Idem, mais l'élément entier (y compris sa balise
+                            // fermante) a déjà été consommé au moment où cette
+                            // erreur est levée (voir `validate_attrs`, appelé
+                            // après les enfants) : rien à sauter, le curseur
+                            // est déjà au frère suivant.
+                            Err(
+                                e @ (ParseError::MissingRequiredAttr { .. }
+                                | ParseError::InvalidHeadingLevel { .. }),
+                            ) => {
+                                errors.push(e);
+                            }
+                            // Erreur structurelle : fatale, voir la doc de
+                            // `parse_document_tolerant`.
+                            Err(e) => return Err(e),
+                        }
+                    }
+                    Token::Eof => {
+                        return Err(ParseError::UnclosedTag {
+                            tag: name.clone(),
+                            line: span.line,
+                            column: span.column,
+                        });
+                    }
+                    other => return Err(self.unexpected("a child node or closing tag", other)),
+                }
+            }
+        }
+
+        validate_attrs(tag, &name, &attrs, span)?;
+
+        Ok(ElementNode {
+            tag,
+            attrs,
+            children,
+            span,
+        })
+    }
+
+    /// Consomme les jetons d'un élément entier — balise ouvrante déjà vue
+    /// (`self.current` vaut encore ce `Token::TagOpen`), attributs, puis
+    /// tout son contenu jusqu'à sa balise fermante correspondante (par nom,
+    /// sans validation sémantique : c'est justement ce qui permet de sauter
+    /// une balise inconnue ou mal placée, que `UetlTag::from_name`/
+    /// `allows_child` viennent de rejeter). Utilisé uniquement pour la
+    /// récupération d'erreur de `parse_element_tolerant`.
+    fn skip_element(&mut self) -> Result<(), ParseError> {
+        let name = match self.current.clone() {
+            Token::TagOpen(name) => name,
+            _ => return Ok(()),
+        };
+        self.bump()?;
+
+        while let Token::AttrName(_) = self.current {
+            self.bump()?;
+            if let Token::AttrValue(_) = self.current {
+                self.bump()?;
+            }
+        }
+
+        if matches!(self.current, Token::SelfClose) {
+            self.bump()?;
+            return Ok(());
+        }
+
+        loop {
+            match self.current.clone() {
+                Token::TagClose(close_name) if close_name == name => {
+                    self.bump()?;
+                    return Ok(());
+                }
+                // Fermeture d'un ancêtre : ce niveau n'a jamais été
+                // refermé (balise mal formée qu'on essaie de sauter) —
+                // on abandonne le saut sans la consommer, le niveau
+                // appelant s'en chargera.
+                Token::TagClose(_) => return Ok(()),
+                Token::TagOpen(_) => self.skip_element()?,
+                Token::Eof => return Ok(()),
+                _ => self.bump()?,
+            }
+        }
+    }
 }
 
 fn parse_attr_value(value: &str) -> AttrValue {

@@ -168,6 +168,35 @@ async fn validate_rejects_an_invalid_document_without_erroring() {
 }
 
 #[tokio::test]
+async fn validate_reports_every_local_error_in_one_pass() {
+    let src = r#"<ue-email><ue-layout><ue-row>
+        <ue-col><ue-button>Missing href #1</ue-button></ue-col>
+        <ue-col><ue-button>Missing href #2</ue-button></ue-col>
+    </ue-row></ue-layout></ue-email>"#;
+    let (status, body) = post("/validate", json!({ "uetl": src })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["valid"], false);
+    let diagnostics = body["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    for d in diagnostics {
+        assert_eq!(d["code"], "missing_required_attr");
+    }
+}
+
+#[tokio::test]
+async fn compile_still_stops_at_the_first_error_unlike_validate() {
+    // /compile ne doit jamais generer un HTML partiel en ignorant des
+    // elements fautifs - contrairement a /validate, il reste strict.
+    let src = r#"<ue-email><ue-layout><ue-row>
+        <ue-col><ue-button>Missing href #1</ue-button></ue-col>
+        <ue-col><ue-button>Missing href #2</ue-button></ue-col>
+    </ue-row></ue-layout></ue-email>"#;
+    let (status, body) = post("/compile", json!({ "uetl": src, "client": "gmail" })).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "missing_required_attr");
+}
+
+#[tokio::test]
 async fn validate_rejects_a_source_over_the_size_limit() {
     let huge = format!(
         "<ue-email><ue-layout><ue-row><ue-col><ue-text>{}</ue-text></ue-col></ue-row></ue-layout></ue-email>",
