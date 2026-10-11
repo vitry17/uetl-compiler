@@ -51,6 +51,31 @@ fn errors_when_heading_level_is_out_of_range() {
 }
 
 #[test]
+fn accepts_unique_ids_on_any_tag() {
+    let src = r#"<ue-email><ue-layout id="layout-1"><ue-row><ue-col><ue-text id="intro">Bonjour</ue-text><ue-button id="cta" href="https://example.com">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
+    assert!(Parser::parse_document(src).is_ok());
+}
+
+#[test]
+fn errors_on_duplicate_id() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-text id="dup">A</ue-text><ue-text id="dup">B</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    let err = Parser::parse_document(src).unwrap_err();
+    assert!(matches!(err, ParseError::DuplicateId { ref id, .. } if id == "dup"));
+}
+
+#[test]
+fn empty_id_is_not_a_collision() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-text id="">A</ue-text><ue-text id="">B</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    assert!(Parser::parse_document(src).is_ok());
+}
+
+#[test]
+fn a_dynamic_id_is_not_checked_for_uniqueness() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-text id="{{ slot }}">A</ue-text><ue-text id="{{ slot }}">B</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    assert!(Parser::parse_document(src).is_ok());
+}
+
+#[test]
 fn parses_dynamic_template_attribute() {
     let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="{{cta_url}}">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
     let doc = Parser::parse_document(src).unwrap();

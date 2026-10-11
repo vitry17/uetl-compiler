@@ -71,6 +71,18 @@ pub enum ParseError {
         line: usize,
         column: usize,
     },
+
+    #[error(
+        "duplicate id '{id}': already used at line {first_line}, column {first_column} \
+         (line {line}, column {column})"
+    )]
+    DuplicateId {
+        id: String,
+        first_line: usize,
+        first_column: usize,
+        line: usize,
+        column: usize,
+    },
 }
 
 pub struct Parser {
@@ -92,6 +104,8 @@ impl Parser {
                 column: root_span.column,
             });
         }
+
+        validate_unique_ids(&root)?;
 
         // Un saut de ligne final après `</ue-email>` est l'usage normal de
         // tout éditeur de texte (Monaco y compris) — sans cette tolérance,
@@ -270,6 +284,54 @@ fn parse_attr_value(value: &str) -> AttrValue {
     } else {
         AttrValue::String(value.to_string())
     }
+}
+
+/// `id` est un attribut accepté sur n'importe quelle balise (aucune règle
+/// propre à UETL ne le réserve ni ne le valide autrement) : c'est
+/// l'identifiant stable par élément qu'un outil externe — l'éditeur visuel du
+/// CRM, pour ancrer un commentaire à un passage précis — peut poser une fois
+/// et relire ensuite, le source UETL le portant d'une édition à l'autre.
+///
+/// Sans unicité garantie, un "identifiant stable" ne tiendrait pas sa
+/// promesse : deux éléments partageant le même `id` rendraient tout ancrage
+/// ambigu. Ce n'est pas une règle de rendu HTML (`validate_attrs`, par
+/// balise) mais une cohérence du document entier, donc une passe séparée
+/// après que l'arbre complet est construit.
+///
+/// Seules les valeurs littérales (`AttrValue::String`) sont comparées : un
+/// `id="{{ quelque_chose }}"` dynamique n'a pas de valeur fixe à comparer
+/// avant l'interpolation, et ne prétend de toute façon pas être un
+/// identifiant stable au sens de cette fonction. Une valeur vide (`id=""`)
+/// est ignorée plutôt que traitée comme une collision : elle équivaut à
+/// l'absence d'identifiant.
+fn validate_unique_ids(root: &ElementNode) -> Result<(), ParseError> {
+    let mut seen: HashMap<String, Span> = HashMap::new();
+    check_unique_ids(root, &mut seen)
+}
+
+fn check_unique_ids(el: &ElementNode, seen: &mut HashMap<String, Span>) -> Result<(), ParseError> {
+    if let Some(AttrValue::String(id)) = el.attrs.get("id") {
+        if !id.is_empty() {
+            if let Some(first_span) = seen.get(id) {
+                return Err(ParseError::DuplicateId {
+                    id: id.clone(),
+                    first_line: first_span.line,
+                    first_column: first_span.column,
+                    line: el.span.line,
+                    column: el.span.column,
+                });
+            }
+            seen.insert(id.clone(), el.span);
+        }
+    }
+
+    for child in &el.children {
+        if let Node::Element(child_el) = child {
+            check_unique_ids(child_el, seen)?;
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_attrs(

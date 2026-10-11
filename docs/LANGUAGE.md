@@ -82,6 +82,21 @@ Omitting these fails parsing with `missing required attribute`.
 
 All other attributes are optional and passed through to the renderer.
 
+## Stable identifiers
+
+`id` is accepted on any tag and is not a styling attribute — it names an
+element for a caller outside the compiler (the CRM's template editor anchors
+a comment to the element that carried a given `id` when the comment was
+written). The compiler's only involvement is enforcing what makes the name
+useful: **`id` values must be unique within a document.** A duplicate fails
+parsing with `duplicate id`, the same way a missing required attribute does.
+
+The compiler does not generate, assign, or persist `id` values — the caller
+that wants one writes it into the source and keeps it there across edits.
+A dynamic `id="{{ expr }}"` is accepted but not checked for uniqueness: its
+literal value isn't known until send time, so there is nothing to compare.
+`id=""` is treated as no id at all, not as a value to collide on.
+
 ## Styling attributes
 
 There is no `<style>` tag and no CSS. Everything is an attribute, and only the
@@ -313,4 +328,5 @@ unknown tag '<div>' (line 4, column 7)
 '<ue-text>' is not a valid child of '<ue-layout>' (line 3, column 5)
 '<ue-col>' was never closed (line 8, column 3)
 missing required attribute 'href' on '<ue-button>' (line 6, column 9)
+duplicate id 'cta': already used at line 3, column 5 (line 9, column 9)
 ```
