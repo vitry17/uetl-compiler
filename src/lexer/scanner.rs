@@ -71,14 +71,33 @@ impl Scanner {
     }
 
     /// Vrai si le `<` à la position courante démarre vraisemblablement une
-    /// vraie balise (`<ue-...`, `</ue-...`, `<!--`) plutôt qu'un caractère
-    /// littéral (une inégalité mathématique, une citation de code). Toutes
-    /// les balises de ce langage commencent par `ue-` ; un `<` non suivi de
-    /// ce préfixe (ou de `/ue-`/`!--`) n'a aucune chance d'être une balise
-    /// valide, donc autant le traiter comme du texte plutôt que de faire
-    /// échouer la compilation sur « expected tag name after '<' ».
+    /// vraie balise plutôt qu'un caractère littéral (une inégalité
+    /// mathématique, une citation de code).
+    ///
+    /// On reconnaît comme début de balise : un commentaire `<!--`, et tout
+    /// `<` ou `</` suivi d'une lettre ASCII. Un `<` suivi d'autre chose
+    /// (espace, chiffre, ponctuation : `2 < 3`, `a <= b`, `<=`) reste du
+    /// texte, pour ne pas faire échouer la compilation sur « expected tag
+    /// name after '<' ».
+    ///
+    /// On ne se limite PAS au préfixe `ue-` : une balise HTML parasite comme
+    /// `<div>` doit être lexée comme une balise (`TagOpen("div")`) pour que le
+    /// parser la rejette en `unknown_tag`, au lieu d'être silencieusement
+    /// recopiée comme du texte (un fragment `<div>x</div>` passait alors pour
+    /// valide — voir `Unimail.Templates.BlocksTest`). Pour embarquer du HTML
+    /// littéral, `<ue-raw>` reste la voie prévue : son contenu est lu en mode
+    /// brut, hors de cette détection. Un `<` littéral collé à une lettre
+    /// (`x<y`) doit désormais s'écrire `&lt;`.
     fn looks_like_tag_start(&self) -> bool {
-        self.starts_with("<!--") || self.starts_with("<ue-") || self.starts_with("</ue-")
+        if self.starts_with("<!--") {
+            return true;
+        }
+
+        match (self.peek(), self.peek_at(1), self.peek_at(2)) {
+            (Some('<'), Some('/'), Some(c)) => c.is_ascii_alphabetic(),
+            (Some('<'), Some(c), _) => c.is_ascii_alphabetic(),
+            _ => false,
+        }
     }
 
     fn next_token_in_tag(&mut self) -> Result<Token, LexError> {
