@@ -127,3 +127,33 @@ fn errors_on_unterminated_attribute_value() {
     let err = tokenize(r#"<ue-button href="https://example.com"#).unwrap_err();
     assert!(err.message.contains("unterminated attribute value"));
 }
+
+// Une balise HTML parasite (non `ue-`) doit être tokenisée comme une vraie
+// balise, pas avalée comme du texte : le parser la rejette ensuite en
+// `unknown_tag`. Sans ça, un fragment `<div>x</div>` passait pour valide
+// (voir `Unimail.Templates.BlocksTest`).
+#[test]
+fn tokenizes_a_bare_html_tag_as_a_tag_not_text() {
+    let tokens = tokenize("<div>x</div>").unwrap();
+    assert_eq!(
+        tokens,
+        vec![
+            Token::TagOpen("div".into()),
+            Token::Text("x".into()),
+            Token::TagClose("div".into()),
+            Token::Eof,
+        ]
+    );
+}
+
+// À l'inverse, un `<` qui n'est pas suivi d'une lettre reste du texte
+// littéral : inégalités mathématiques, `<=`, etc. ne doivent pas déclencher
+// « expected tag name after '<' ».
+#[test]
+fn keeps_a_non_tag_left_angle_as_text() {
+    let tokens = tokenize("2 < 3 and a <= b").unwrap();
+    assert_eq!(
+        tokens,
+        vec![Token::Text("2 < 3 and a <= b".into()), Token::Eof]
+    );
+}
