@@ -22,7 +22,10 @@ fn bold_applies_to_a_fragment_in_the_middle_of_a_sentence() {
 
     let html = render(src, "gmail");
 
-    assert!(html.contains("<strong>prochain abonnement</strong>"), "gras absent : {html}");
+    assert!(
+        html.contains("<strong>prochain abonnement</strong>"),
+        "gras absent : {html}"
+    );
     // Le reste de la phrase doit rester hors du gras.
     assert!(html.contains("Et si votre "), "debut de phrase perdu");
     assert!(html.contains(" etait le votre ?"), "fin de phrase perdue");
@@ -41,8 +44,16 @@ fn bold_and_italic_render_on_every_profile() {
         let html = HtmlGenerator::generate(&doc, profile);
         // <strong>/<em> plutot que <b>/<i> : meme rendu partout, moteur Word
         // d'Outlook compris, et le sens est porte pour les lecteurs d'ecran.
-        assert!(html.contains("<strong>Jamais</strong>"), "gras perdu sur {}", profile.id);
-        assert!(html.contains("<em>frais</em>"), "italique perdu sur {}", profile.id);
+        assert!(
+            html.contains("<strong>Jamais</strong>"),
+            "gras perdu sur {}",
+            profile.id
+        );
+        assert!(
+            html.contains("<em>frais</em>"),
+            "italique perdu sur {}",
+            profile.id
+        );
     }
 }
 
@@ -55,8 +66,14 @@ fn inline_formatting_works_inside_headings_and_buttons_too() {
 
     let html = render(src, "gmail");
 
-    assert!(html.contains("<strong>economiser</strong>"), "gras absent du titre");
-    assert!(html.contains("<strong>gratuitement</strong>"), "gras absent du bouton");
+    assert!(
+        html.contains("<strong>economiser</strong>"),
+        "gras absent du titre"
+    );
+    assert!(
+        html.contains("<strong>gratuitement</strong>"),
+        "gras absent du bouton"
+    );
 }
 
 #[test]
@@ -66,7 +83,10 @@ fn bold_and_italic_nest() {
 </ue-col></ue-row></ue-layout></ue-email>"#;
 
     let html = render(src, "gmail");
-    assert!(html.contains("<strong>tres <em>important</em></strong>"), "imbrication cassee");
+    assert!(
+        html.contains("<strong>tres <em>important</em></strong>"),
+        "imbrication cassee"
+    );
 }
 
 #[test]
@@ -88,8 +108,14 @@ fn image_width_attribute_is_a_bare_integer() {
 
     let html = render(src, "outlook_desktop");
 
-    assert!(html.contains(r#"width="160""#), "attribut width invalide : {html}");
-    assert!(!html.contains(r#"width="160px""#), "unite laissee dans l'attribut");
+    assert!(
+        html.contains(r#"width="160""#),
+        "attribut width invalide : {html}"
+    );
+    assert!(
+        !html.contains(r#"width="160px""#),
+        "unite laissee dans l'attribut"
+    );
     // La CSS, elle, garde l'unite.
     assert!(html.contains("width:160px"), "largeur CSS perdue");
 }
@@ -112,5 +138,8 @@ fn a_relative_image_width_omits_the_attribute_rather_than_guessing() {
         .to_string();
 
     assert!(img.contains("width:100%"), "largeur CSS perdue : {img}");
-    assert!(!img.contains(r#"width="100%""#), "pourcentage place dans l'attribut HTML : {img}");
+    assert!(
+        !img.contains(r#"width="100%""#),
+        "pourcentage place dans l'attribut HTML : {img}"
+    );
 }

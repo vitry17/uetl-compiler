@@ -8,7 +8,8 @@ fn button_rendering_differs_between_gmail_and_outlook_desktop() {
     let registry = ProfileRegistry::load();
 
     let gmail_html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
-    let outlook_html = HtmlGenerator::generate(&doc, registry.get_profile("outlook_desktop").unwrap());
+    let outlook_html =
+        HtmlGenerator::generate(&doc, registry.get_profile("outlook_desktop").unwrap());
 
     assert_ne!(gmail_html, outlook_html);
     assert!(!gmail_html.contains("v:roundrect"));
@@ -26,10 +27,19 @@ fn button_background_and_color_override_the_theme_preset() {
     for profile in ["gmail", "outlook_desktop"] {
         let html = HtmlGenerator::generate(&doc, registry.get_profile(profile).unwrap());
 
-        assert!(html.contains("#00AFF5"), "{profile}: brand background missing");
-        assert!(html.contains("#05073B"), "{profile}: brand text colour missing");
+        assert!(
+            html.contains("#00AFF5"),
+            "{profile}: brand background missing"
+        );
+        assert!(
+            html.contains("#05073B"),
+            "{profile}: brand text colour missing"
+        );
         // Le preset ne doit plus apparaitre une fois surcharge.
-        assert!(!html.contains("#2E5FAC"), "{profile}: theme preset still applied");
+        assert!(
+            !html.contains("#2E5FAC"),
+            "{profile}: theme preset still applied"
+        );
     }
 }
 
@@ -81,7 +91,8 @@ fn row_uses_media_queries_only_when_profile_supports_them() {
     let registry = ProfileRegistry::load();
 
     let gmail_html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
-    let outlook_html = HtmlGenerator::generate(&doc, registry.get_profile("outlook_desktop").unwrap());
+    let outlook_html =
+        HtmlGenerator::generate(&doc, registry.get_profile("outlook_desktop").unwrap());
 
     assert!(gmail_html.contains("@media"));
     assert!(!outlook_html.contains("@media"));
@@ -164,15 +175,41 @@ fn template_variable_is_preserved_in_output() {
 }
 
 #[test]
-fn raw_content_is_not_escaped_unlike_text_content() {
+fn raw_content_and_text_content_both_produce_a_single_escape_of_amp() {
+    // Avant correctif : `ue-raw` recopiait `&amp;` tel quel, mais `ue-text`
+    // le double-echappait en `&amp;amp;` (le lexer ne decodait pas les
+    // entites avant que `html_escape` ne reechappe le `&`). Ecrire `&amp;`
+    // dans le source doit produire le meme `&amp;` simple des deux cotes.
     let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-raw>5 &amp; 6</ue-raw><ue-text>5 &amp; 6</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
     let doc = Parser::parse_document(src).unwrap();
     let registry = ProfileRegistry::load();
 
     let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
 
-    assert!(html.contains("5 &amp; 6"));
-    assert!(html.contains("5 &amp;amp; 6"));
+    assert_eq!(html.matches("5 &amp; 6").count(), 2);
+    assert!(!html.contains("&amp;amp;"));
+}
+
+#[test]
+fn a_literal_bare_ampersand_in_text_is_escaped_once() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-text>MAISON&CO</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+
+    assert!(html.contains("MAISON&amp;CO"));
+}
+
+#[test]
+fn a_literal_bare_less_than_in_text_no_longer_breaks_the_lexer() {
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-text>5 < 10</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    let doc = Parser::parse_document(src).unwrap();
+    let registry = ProfileRegistry::load();
+
+    let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
+
+    assert!(html.contains("5 &lt; 10"));
 }
 
 #[test]
@@ -202,6 +239,15 @@ fn self_closing_raw_block_has_no_content() {
     assert!(!html.contains("<div"));
 }
 
+#[test]
+fn ue_interactive_does_not_accept_a_nested_element_yet() {
+    // Documente un etat reel, pas une aspiration : voir docs/LANGUAGE.md
+    // section "Interactive content". Si ce test casse un jour parce que
+    // des enfants imbriques ont ete rendus valides, la doc doit suivre.
+    let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-interactive><ue-text>x</ue-text></ue-interactive></ue-col></ue-row></ue-layout></ue-email>"#;
+    assert!(Parser::parse_document(src).is_err());
+}
+
 const FULL_DOCUMENT: &str = r##"<ue-email lang="fr" dark-mode="auto">
 <ue-layout max-width="600px" background-light="#ffffff" background-dark="#1a1a2e">
 <ue-row stack-on="mobile">
@@ -226,7 +272,11 @@ fn renders_every_component_on_every_profile_without_panicking() {
 
     for profile in registry.list_profiles() {
         let html = HtmlGenerator::generate(&doc, profile);
-        assert!(html.starts_with("<!DOCTYPE html>"), "profile {}", profile.id);
+        assert!(
+            html.starts_with("<!DOCTYPE html>"),
+            "profile {}",
+            profile.id
+        );
         assert!(html.contains("{{prenom}}"), "profile {}", profile.id);
         assert!(html.contains("{{cta_url}}"), "profile {}", profile.id);
         assert!(html.contains("Titre"), "profile {}", profile.id);

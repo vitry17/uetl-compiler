@@ -64,9 +64,39 @@ impl Scanner {
 
         match self.peek() {
             None => Ok(Token::Eof),
-            Some('<') => self.read_left_angle(),
+            Some('<') if self.looks_like_tag_start() => self.read_left_angle(),
             Some('{') if self.peek_at(1) == Some('{') => self.read_template(),
             _ => self.read_text(),
+        }
+    }
+
+    /// Vrai si le `<` à la position courante démarre vraisemblablement une
+    /// vraie balise plutôt qu'un caractère littéral (une inégalité
+    /// mathématique, une citation de code).
+    ///
+    /// On reconnaît comme début de balise : un commentaire `<!--`, et tout
+    /// `<` ou `</` suivi d'une lettre ASCII. Un `<` suivi d'autre chose
+    /// (espace, chiffre, ponctuation : `2 < 3`, `a <= b`, `<=`) reste du
+    /// texte, pour ne pas faire échouer la compilation sur « expected tag
+    /// name after '<' ».
+    ///
+    /// On ne se limite PAS au préfixe `ue-` : une balise HTML parasite comme
+    /// `<div>` doit être lexée comme une balise (`TagOpen("div")`) pour que le
+    /// parser la rejette en `unknown_tag`, au lieu d'être silencieusement
+    /// recopiée comme du texte (un fragment `<div>x</div>` passait alors pour
+    /// valide — voir `Unimail.Templates.BlocksTest`). Pour embarquer du HTML
+    /// littéral, `<ue-raw>` reste la voie prévue : son contenu est lu en mode
+    /// brut, hors de cette détection. Un `<` littéral collé à une lettre
+    /// (`x<y`) doit désormais s'écrire `&lt;`.
+    fn looks_like_tag_start(&self) -> bool {
+        if self.starts_with("<!--") {
+            return true;
+        }
+
+        match (self.peek(), self.peek_at(1), self.peek_at(2)) {
+            (Some('<'), Some('/'), Some(c)) => c.is_ascii_alphabetic(),
+            (Some('<'), Some(c), _) => c.is_ascii_alphabetic(),
+            _ => false,
         }
     }
 
@@ -248,6 +278,10 @@ impl Scanner {
                     self.advance();
                     return Ok(Token::AttrValue(value));
                 }
+                Some('&') => match self.try_decode_entity() {
+                    Some(decoded) => value.push(decoded),
+                    None => value.push(self.advance().unwrap()),
+                },
                 Some(_) => value.push(self.advance().unwrap()),
                 None => return Err(self.error("unterminated attribute value")),
             }
@@ -276,12 +310,79 @@ impl Scanner {
         let mut text = String::new();
         loop {
             match self.peek() {
-                None | Some('<') => break,
+                None => break,
+                Some('<') if self.looks_like_tag_start() => break,
                 Some('{') if self.peek_at(1) == Some('{') => break,
+                Some('&') => match self.try_decode_entity() {
+                    Some(decoded) => text.push(decoded),
+                    None => text.push(self.advance().unwrap()),
+                },
                 Some(_) => text.push(self.advance().unwrap()),
             }
         }
         Ok(Token::Text(text))
+    }
+
+    /// Décode une entité HTML (`&amp;`, `&#39;`, `&#x27;`...) à la position
+    /// courante (sur le `&`). Sans ce décodage, un auteur qui écrit `&amp;`
+    /// dans le source voit `&amp;amp;` en sortie : `html_escape`/`attr_escape`
+    /// ré-échappent le `&` que l'auteur avait déjà échappé lui-même. Couvre
+    /// les 5 entités nommées standard plus `nbsp` (l'espace insécable est
+    /// d'un usage courant en email) et les entités numériques — pas la table
+    /// HTML5 complète (des centaines d'entrées), hors de portée de ce correctif.
+    ///
+    /// Ne consomme rien et retourne `None` si la séquence n'est pas une
+    /// entité reconnue (`&` isolé, `&nbsp` sans `;`...) : le curseur est
+    /// restauré exactement, l'appelant traite alors le `&` comme littéral.
+    fn try_decode_entity(&mut self) -> Option<char> {
+        let (start_pos, start_line, start_col) = (self.pos, self.line, self.column);
+
+        self.advance(); // '&'
+        let mut entity = String::new();
+        loop {
+            match self.peek() {
+                Some(';') => {
+                    self.advance();
+                    if let Some(c) = decode_entity_name(&entity) {
+                        return Some(c);
+                    }
+                    break;
+                }
+                Some(c) if c.is_ascii_alphanumeric() || c == '#' => {
+                    entity.push(c);
+                    self.advance();
+                }
+                _ => break,
+            }
+        }
+
+        self.pos = start_pos;
+        self.line = start_line;
+        self.column = start_col;
+        None
+    }
+}
+
+fn decode_entity_name(entity: &str) -> Option<char> {
+    match entity {
+        "amp" => Some('&'),
+        "lt" => Some('<'),
+        "gt" => Some('>'),
+        "quot" => Some('"'),
+        "apos" => Some('\''),
+        "nbsp" => Some('\u{00A0}'),
+        _ => {
+            if let Some(hex) = entity
+                .strip_prefix("#x")
+                .or_else(|| entity.strip_prefix("#X"))
+            {
+                u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
+            } else if let Some(dec) = entity.strip_prefix('#') {
+                dec.parse::<u32>().ok().and_then(char::from_u32)
+            } else {
+                None
+            }
+        }
     }
 }
 
