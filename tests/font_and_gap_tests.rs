@@ -50,7 +50,10 @@ fn a_document_without_font_falls_back_to_a_sans_serif_stack() {
 
     let html = render(src, "gmail");
 
-    assert!(html.contains("sans-serif"), "aucune police par defaut : {html}");
+    assert!(
+        html.contains("sans-serif"),
+        "aucune police par defaut : {html}"
+    );
 }
 
 #[test]
@@ -61,7 +64,10 @@ fn gap_becomes_a_real_spacer_cell_in_the_table_layout() {
     // L'attribut width d'une cellule attend un entier nu, comme celui d'une
     // image : `width="16px"` serait invalide et ignore.
     assert!(html.contains(r#"width="16""#), "attribut width invalide");
-    assert!(html.contains("font-size:0"), "la cellule vide imposera une hauteur");
+    assert!(
+        html.contains("font-size:0"),
+        "la cellule vide imposera une hauteur"
+    );
 }
 
 #[test]
@@ -81,7 +87,10 @@ fn gap_still_uses_the_native_property_where_flexbox_works() {
 
     assert!(html.contains("gap:16px"), "gap natif perdu");
     // Pas de cellule d'espacement inutile la ou la propriete existe.
-    assert!(!html.contains("font-size:0;line-height:0;"), "espaceur superflu");
+    assert!(
+        !html.contains("font-size:0;line-height:0;"),
+        "espaceur superflu"
+    );
 }
 
 #[test]
@@ -104,8 +113,14 @@ fn the_spacer_becomes_vertical_spacing_when_the_row_stacks() {
 
     let html = render(src, "gmail");
 
-    assert!(html.contains("ue-gap"), "espaceur non identifiable : {html}");
-    assert!(!html.contains("display:none!important"), "espaceur masque a l'empilement");
+    assert!(
+        html.contains("ue-gap"),
+        "espaceur non identifiable : {html}"
+    );
+    assert!(
+        !html.contains("display:none!important"),
+        "espaceur masque a l'empilement"
+    );
     assert!(
         html.contains("height:16px!important"),
         "l'espacement vertical ne reprend pas la valeur de gap : {html}"

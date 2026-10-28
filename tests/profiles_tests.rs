@@ -3,7 +3,11 @@ use uetl_compiler::compiler::{ProfileRegistry, SupportLevel};
 #[test]
 fn loads_all_seven_profiles() {
     let registry = ProfileRegistry::load();
-    let mut ids: Vec<&str> = registry.list_profiles().iter().map(|p| p.id.as_str()).collect();
+    let mut ids: Vec<&str> = registry
+        .list_profiles()
+        .iter()
+        .map(|p| p.id.as_str())
+        .collect();
     ids.sort_unstable();
 
     assert_eq!(
