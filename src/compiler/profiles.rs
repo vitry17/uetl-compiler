@@ -168,6 +168,17 @@ pub struct ProfileRegistry {
 }
 
 impl ProfileRegistry {
+    /// Delivery target, deliberately separate from the seven simulated clients.
+    pub fn delivery_profile() -> &'static Profile {
+        static PROFILE: OnceLock<Profile> = OnceLock::new();
+        PROFILE.get_or_init(|| {
+            let profile: Profile = serde_json::from_str(include_str!("../profiles/universal.json"))
+                .expect("delivery profile must be valid JSON");
+            assert!(profile.validate_schema().is_empty());
+            profile
+        })
+    }
+
     /// Charge les profils embarqués dans le binaire (aucune lecture disque à la requête).
     pub fn load() -> Self {
         let mut profiles = HashMap::new();
