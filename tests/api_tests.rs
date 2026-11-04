@@ -206,3 +206,47 @@ async fn validate_rejects_a_source_over_the_size_limit() {
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(body["error"]["code"], "source_too_large");
 }
+
+#[tokio::test]
+async fn delivery_is_common_responsive_and_has_mso_hero_fallback_without_fixed_button() {
+    let source = r##"<ue-email lang="fr" dark-mode="auto"><ue-layout background="#ffffff" max-width="640px"><ue-row stack-on="mobile"><ue-col><ue-button href="https://example.com" padding="18px 32px">Un libellé très long {{first_name}} qui doit rester visible</ue-button></ue-col><ue-col><ue-text color-dark="#ffffff">Texte</ue-text></ue-col></ue-row><ue-hero src="https://example.com/bg.jpg" height="240px"><ue-text>Hero</ue-text></ue-hero></ue-layout></ue-email>"##;
+    let (status, body) = post("/compile/send", json!({"uetl": source})).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let html = body["html"].as_str().unwrap();
+    assert!(html.contains("<v:rect"));
+    assert!(html.contains("<!--[if mso]><table"));
+    assert!(html.contains("width=\"640\""));
+    assert!(html.contains("@media"));
+    assert!(html.contains("prefers-color-scheme"));
+    assert!(html.contains("bgcolor=\"#ffffff\""));
+    assert!(html.contains("padding:18px 32px;"));
+    assert!(html.contains("{{first_name}}"));
+    assert!(!html.contains("<v:roundrect"));
+    assert!(!html.contains("display:flex"));
+    let (_, again) = post("/compile/send", json!({"uetl": source})).await;
+    assert_eq!(body, again);
+}
+
+#[tokio::test]
+async fn delivery_rejects_invalid_source_and_preserves_legacy_preview_contract() {
+    let (status, _) = post("/compile/send", json!({"uetl": "<div>Wrong</div>"})).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (_, gmail) = post("/compile", json!({"uetl": VALID_DOC, "client": "gmail"})).await;
+    assert!(!gmail["html"].as_str().unwrap().contains("<!--[if mso]>"));
+    let (_, outlook) = post(
+        "/compile",
+        json!({"uetl": VALID_DOC, "client": "outlook_desktop"}),
+    )
+    .await;
+    assert!(outlook["html"].as_str().unwrap().contains("<v:roundrect"));
+}
+
+#[tokio::test]
+async fn delivery_escapes_language_as_an_attribute() {
+    let source = r#"<ue-email lang='en" onload="alert(1)'><ue-layout><ue-row><ue-col><ue-text>Safe</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
+    let (status, body) = post("/compile/send", json!({"uetl": source})).await;
+    assert_eq!(status, StatusCode::OK);
+    let html = body["html"].as_str().unwrap();
+    assert!(html.contains("&quot;"));
+    assert!(!html.contains("lang=\"en\" onload="));
+}

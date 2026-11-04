@@ -59,6 +59,7 @@ pub async fn health() -> Json<Value> {
         "status": "ok",
         "version": env!("CARGO_PKG_VERSION"),
         "profiles_loaded": profile_count,
+        "delivery_target": "universal-2026-11-04",
     }))
 }
 
@@ -160,6 +161,19 @@ pub async fn compile(Json(req): Json<CompileRequest>) -> Result<Json<CompileResu
     let warnings = collect_warnings(&document);
     let html = HtmlGenerator::generate(&document, profile);
 
+    Ok(Json(CompileResult { html, warnings }))
+}
+
+/// Compile a single delivery document with conservative layout and conditional fallbacks.
+pub async fn compile_send(
+    Json(req): Json<CompileAllRequest>,
+) -> Result<Json<CompileResult>, ApiError> {
+    check_source_size(&req.uetl)?;
+    let document = parse_document_blocking(req.uetl)
+        .await
+        .map_err(ApiError::ParseFailed)?;
+    let warnings = collect_warnings(&document);
+    let html = HtmlGenerator::generate(&document, ProfileRegistry::delivery_profile());
     Ok(Json(CompileResult { html, warnings }))
 }
 

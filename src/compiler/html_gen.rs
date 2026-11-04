@@ -275,7 +275,7 @@ impl<'a> HtmlGenerator<'a> {
 
         format!(
             "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{dark_meta}{style_tag}\n</head>\n<body style=\"margin:0;padding:0;\">{preheader}\n{body}\n</body>\n</html>",
-            lang = doc.lang,
+            lang = attr_escape(&doc.lang),
         )
     }
 
@@ -295,10 +295,25 @@ impl<'a> HtmlGenerator<'a> {
         let cell_style = style_attr(&[("padding", padding)]);
 
         let rows = self.gen_children(&el.children);
+        let (mso_open, mso_close, bgcolor) = if self.profile.id == "universal" {
+            let width = attr_str(&el.attrs, "max-width")
+                .unwrap_or_else(|| "600px".into())
+                .trim_end_matches("px")
+                .parse::<u32>()
+                .unwrap_or(600)
+                .clamp(100, 1400);
+            let bgcolor = attr_themed(&el.attrs, "background")
+                .map(|color| format!(" bgcolor=\"{}\"", normalize_color(&color)))
+                .unwrap_or_default();
+            (format!("<!--[if mso]><table role=\"presentation\" width=\"{width}\" align=\"center\" cellpadding=\"0\" cellspacing=\"0\"><tr><td><![endif]-->"),
+             "<!--[if mso]></td></tr></table><![endif]-->".to_string(), bgcolor)
+        } else {
+            (String::new(), String::new(), String::new())
+        };
 
         format!(
-            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{class_attr}{outer_style}><tr><td align=\"center\">\
-<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{inner_style}><tr><td{cell_style}>{rows}</td></tr></table>\
+            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{class_attr}{bgcolor}{outer_style}><tr><td align=\"center\">{mso_open}\
+<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{inner_style}><tr><td{cell_style}>{rows}</td></tr></table>{mso_close}\
 </td></tr></table>"
         )
     }
@@ -567,7 +582,7 @@ impl<'a> HtmlGenerator<'a> {
             .map(|a| format!(" align=\"{a}\""))
             .unwrap_or_default();
 
-        if self.profile.quirk("vml_support") {
+        if self.profile.quirk("vml_support") && self.profile.id != "universal" {
             // VML ne connait pas border-radius : il exprime l'arrondi en
             // pourcentage de la moitie du plus petit cote. Le bouton faisant
             // 44px de haut, 50 % correspond a un rayon de 22px — la pilule.
@@ -585,9 +600,21 @@ impl<'a> HtmlGenerator<'a> {
 <!--<![endif]-->"
             )
         } else {
+            // Only delivery uses cell padding. No fixed dimensions: long/localized
+            // labels remain visible. Outlook may display square corners.
+            let cta_marker = if self.profile.id == "universal" {
+                " data-uetl-cta=\"true\""
+            } else {
+                ""
+            };
+            let (cell_padding, anchor_padding) = if self.profile.id == "universal" {
+                (format!("padding:{padding};"), "0".to_string())
+            } else {
+                (String::new(), padding)
+            };
             format!(
-                "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"{align}><tr><td align=\"center\" bgcolor=\"{background}\" style=\"border-radius:{radius};\">\
-<a href=\"{href}\"{aria} style=\"font-size:{font_size};font-family:{font};color:{color};text-decoration:none;padding:{padding};display:inline-block;\">{label}</a>\
+                "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"{align}><tr><td align=\"center\" bgcolor=\"{background}\" style=\"border-radius:{radius};{cell_padding}\">\
+<a href=\"{href}\"{aria}{cta_marker} style=\"font-size:{font_size};font-family:{font};color:{color};text-decoration:none;padding:{anchor_padding};display:inline-block;\">{label}</a>\
 </td></tr></table>"
             )
         }
