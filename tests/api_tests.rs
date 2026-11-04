@@ -250,3 +250,18 @@ async fn delivery_escapes_language_as_an_attribute() {
     assert!(html.contains("&quot;"));
     assert!(!html.contains("lang=\"en\" onload="));
 }
+
+#[tokio::test]
+async fn delivery_uses_declared_title_safely_and_avoids_zero_padding_and_quoted_default_fonts() {
+    let (status, body) = post(
+        "/compile/send",
+        json!({"uetl": VALID_DOC, "title": "Bonjour <script> & {{first_name}}"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let html = body["html"].as_str().unwrap();
+    assert!(html.contains("<title>Bonjour &lt;script&gt; &amp; {{first_name}}</title>"));
+    assert!(!html.contains("padding:0;"));
+    assert!(!html.contains("'Segoe UI'"));
+    assert!(html.contains("Segoe UI"));
+}

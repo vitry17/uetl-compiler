@@ -1,7 +1,7 @@
 # Common delivery export
 
 `POST /compile/send` accepts `{ "uetl": "<ue-email>...</ue-email>" }` and
-returns the existing `{ "html": "...", "warnings": [] }` compilation shape.
+accepts an optional declared `title` (maximum 2000 UTF-8 bytes), and returns the existing `{ "html": "...", "warnings": [] }` compilation shape.
 Deploy this compiler before switching a CRM worker to this route. A missing
 route is an integration failure; do not fall back silently to Gmail previews.
 
@@ -25,3 +25,7 @@ Regression tests cover long/dynamic CTA labels, MSO hero/width branches,
 responsive/dark CSS, bgcolor, invalid input, deterministic output, legacy
 profile contracts and language-attribute injection. Real inbox captures are
 not provided by these tests.
+
+The CRM passes its declared subject as the escaped document title. No title is
+invented when absent. Default font identifiers avoid Yahoo’s quoted-font issue;
+unnecessary zero padding is omitted from delivery body/anchors.

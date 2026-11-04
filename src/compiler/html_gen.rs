@@ -13,7 +13,7 @@ use crate::parser::ast::{AttrValue, DarkModeOption, DocumentNode, ElementNode, N
 /// aucune charte graphique moderne. Cette pile ne contient que des polices
 /// reellement installees sur les postes clients — une webfont ne se charge
 /// pas dans la majorite des clients mail.
-const DEFAULT_FONT_STACK: &str = "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+const DEFAULT_FONT_STACK: &str = "-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif";
 
 pub struct HtmlGenerator<'a> {
     profile: &'a Profile,
@@ -21,6 +21,7 @@ pub struct HtmlGenerator<'a> {
     /// seul `<body>` : le moteur Word d'Outlook n'herite pas la police dans
     /// les tableaux, et toute la mise en page en est faite.
     font_family: String,
+    document_title: Option<String>,
     #[allow(dead_code)]
     indent_level: usize,
     next_id: Cell<usize>,
@@ -33,8 +34,19 @@ pub struct HtmlGenerator<'a> {
 
 impl<'a> HtmlGenerator<'a> {
     pub fn generate(ast: &DocumentNode, profile: &'a Profile) -> String {
+        Self::generate_with_title(ast, profile, None)
+    }
+
+    pub fn generate_with_title(
+        ast: &DocumentNode,
+        profile: &'a Profile,
+        title: Option<&str>,
+    ) -> String {
         let generator = Self {
             profile,
+            document_title: title
+                .filter(|value| !value.trim().is_empty())
+                .map(html_escape),
             font_family: ast
                 .font_family
                 .clone()
@@ -273,8 +285,18 @@ impl<'a> HtmlGenerator<'a> {
             .map(preheader_block)
             .unwrap_or_default();
 
+        let title = self
+            .document_title
+            .as_ref()
+            .map(|text| format!("<title>{text}</title>\n"))
+            .unwrap_or_default();
+        let body_padding = if self.profile.id == "universal" {
+            ""
+        } else {
+            "padding:0;"
+        };
         format!(
-            "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{dark_meta}{style_tag}\n</head>\n<body style=\"margin:0;padding:0;\">{preheader}\n{body}\n</body>\n</html>",
+            "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n{title}<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{dark_meta}{style_tag}\n</head>\n<body style=\"margin:0;{body_padding}\">{preheader}\n{body}\n</body>\n</html>",
             lang = attr_escape(&doc.lang),
         )
     }
@@ -608,13 +630,13 @@ impl<'a> HtmlGenerator<'a> {
                 ""
             };
             let (cell_padding, anchor_padding) = if self.profile.id == "universal" {
-                (format!("padding:{padding};"), "0".to_string())
+                (format!("padding:{padding};"), String::new())
             } else {
-                (String::new(), padding)
+                (String::new(), format!("padding:{padding};"))
             };
             format!(
                 "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"{align}><tr><td align=\"center\" bgcolor=\"{background}\" style=\"border-radius:{radius};{cell_padding}\">\
-<a href=\"{href}\"{aria}{cta_marker} style=\"font-size:{font_size};font-family:{font};color:{color};text-decoration:none;padding:{anchor_padding};display:inline-block;\">{label}</a>\
+<a href=\"{href}\"{aria}{cta_marker} style=\"font-size:{font_size};font-family:{font};color:{color};text-decoration:none;{anchor_padding}display:inline-block;\">{label}</a>\
 </td></tr></table>"
             )
         }

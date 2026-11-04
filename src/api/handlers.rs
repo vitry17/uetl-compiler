@@ -164,16 +164,34 @@ pub async fn compile(Json(req): Json<CompileRequest>) -> Result<Json<CompileResu
     Ok(Json(CompileResult { html, warnings }))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DeliveryRequest {
+    pub uetl: String,
+    pub title: Option<String>,
+}
+
 /// Compile a single delivery document with conservative layout and conditional fallbacks.
 pub async fn compile_send(
-    Json(req): Json<CompileAllRequest>,
+    Json(req): Json<DeliveryRequest>,
 ) -> Result<Json<CompileResult>, ApiError> {
     check_source_size(&req.uetl)?;
     let document = parse_document_blocking(req.uetl)
         .await
         .map_err(ApiError::ParseFailed)?;
     let warnings = collect_warnings(&document);
-    let html = HtmlGenerator::generate(&document, ProfileRegistry::delivery_profile());
+    if let Some(title) = &req.title {
+        if title.len() > 2000 {
+            return Err(ApiError::SourceTooLarge {
+                actual: title.len(),
+                max: 2000,
+            });
+        }
+    }
+    let html = HtmlGenerator::generate_with_title(
+        &document,
+        ProfileRegistry::delivery_profile(),
+        req.title.as_deref(),
+    );
     Ok(Json(CompileResult { html, warnings }))
 }
 
