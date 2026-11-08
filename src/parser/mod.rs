@@ -3,4 +3,4 @@ pub mod ast;
 pub mod parser;
 
 pub use ast::{AttrValue, DarkModeOption, DocumentNode, ElementNode, Node, UetlTag};
-pub use parser::{ParseError, Parser};
+pub use parser::{Diagnostic, ParseError, Parser};

@@ -81,8 +81,14 @@ fn stacking_still_happens_through_the_media_query_where_supported() {
     // largeur reelle de la fenetre, et non par une decision prise au build.
     let html = render(DEUX_COLONNES, "gmail");
 
-    assert!(html.contains("@media (max-width:600px)"), "media query absente");
-    assert!(html.contains("display:block!important"), "regle d'empilement absente");
+    assert!(
+        html.contains("@media (max-width:600px)"),
+        "media query absente"
+    );
+    assert!(
+        html.contains("display:block!important"),
+        "regle d'empilement absente"
+    );
 }
 
 #[test]
@@ -93,8 +99,14 @@ fn an_image_never_overflows_its_container() {
 
     for client in ["gmail", "outlook_desktop", "apple_mail"] {
         let html = render(src, client);
-        assert!(html.contains("max-width:100%"), "image non contrainte sur {client}");
-        assert!(html.contains("height:auto"), "hauteur non proportionnelle sur {client}");
+        assert!(
+            html.contains("max-width:100%"),
+            "image non contrainte sur {client}"
+        );
+        assert!(
+            html.contains("height:auto"),
+            "hauteur non proportionnelle sur {client}"
+        );
     }
 }
 
@@ -105,7 +117,10 @@ fn an_explicit_height_wins_over_the_automatic_one() {
     let html = render(src, "gmail");
 
     assert!(html.contains("height:120px"), "hauteur explicite perdue");
-    assert!(!html.contains("height:auto"), "hauteur automatique imposee malgre le choix de l'auteur");
+    assert!(
+        !html.contains("height:auto"),
+        "hauteur automatique imposee malgre le choix de l'auteur"
+    );
 }
 
 #[test]
@@ -115,8 +130,20 @@ fn a_percentage_width_stays_out_of_the_html_attribute() {
     let src = r#"<ue-email><ue-layout><ue-row><ue-col><ue-image src="p.png" alt="P" width="100%" /></ue-col></ue-row></ue-layout></ue-email>"#;
 
     let html = render(src, "gmail");
-    let img = html.split("<img").nth(1).unwrap().split('>').next().unwrap();
+    let img = html
+        .split("<img")
+        .nth(1)
+        .unwrap()
+        .split('>')
+        .next()
+        .unwrap();
 
-    assert!(img.contains("width:100%"), "largeur en pourcentage perdue : {img}");
-    assert!(!img.contains(r#"width="100%""#), "pourcentage place dans l'attribut HTML");
+    assert!(
+        img.contains("width:100%"),
+        "largeur en pourcentage perdue : {img}"
+    );
+    assert!(
+        !img.contains(r#"width="100%""#),
+        "pourcentage place dans l'attribut HTML"
+    );
 }

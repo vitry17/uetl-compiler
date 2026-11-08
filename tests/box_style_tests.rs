@@ -38,7 +38,10 @@ fn column_background_is_also_a_bgcolor_attribute_for_outlook() {
     // CSS background : on emet les deux.
     let html = HtmlGenerator::generate(&doc, registry.get_profile("outlook_desktop").unwrap());
 
-    assert!(html.contains(r##"bgcolor="#F0FDF4""##), "bgcolor absent : {html}");
+    assert!(
+        html.contains(r##"bgcolor="#F0FDF4""##),
+        "bgcolor absent : {html}"
+    );
 }
 
 #[test]
@@ -52,7 +55,10 @@ fn column_styles_survive_the_flexbox_layout_too() {
 
     assert!(html.contains("display:flex"), "chemin flexbox attendu");
     assert!(html.contains("background:#F0FDF4"), "fond perdu en flexbox");
-    assert!(html.contains("border-radius:12px"), "arrondi perdu en flexbox");
+    assert!(
+        html.contains("border-radius:12px"),
+        "arrondi perdu en flexbox"
+    );
     // bgcolor n'a aucun sens sur un div : il ne doit pas y apparaitre.
     assert!(!html.contains("bgcolor"), "bgcolor emis sur un div");
 }
@@ -68,8 +74,14 @@ fn column_background_has_a_dark_variant() {
     let html = HtmlGenerator::generate(&doc, registry.get_profile("apple_mail").unwrap());
 
     assert!(html.contains("background:#FFFFFF"), "fond clair absent");
-    assert!(html.contains("prefers-color-scheme:dark"), "media query absente");
-    assert!(html.contains("background:#0F1B33 !important"), "fond sombre absent");
+    assert!(
+        html.contains("prefers-color-scheme:dark"),
+        "media query absente"
+    );
+    assert!(
+        html.contains("background:#0F1B33 !important"),
+        "fond sombre absent"
+    );
 }
 
 #[test]
@@ -100,7 +112,10 @@ fn button_radius_is_configurable_and_defaults_to_four_pixels() {
 
     let pilule = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://x.fr" border-radius="24px">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
     let html = HtmlGenerator::generate(&Parser::parse_document(pilule).unwrap(), gmail);
-    assert!(html.contains("border-radius:24px"), "rayon personnalise ignore");
+    assert!(
+        html.contains("border-radius:24px"),
+        "rayon personnalise ignore"
+    );
 }
 
 #[test]
@@ -113,11 +128,17 @@ fn outlook_translates_the_radius_into_a_vml_arcsize() {
     // haut, donc 50 % vaut un rayon de 22px — la pilule.
     let pilule = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://x.fr" border-radius="24px">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
     let html = HtmlGenerator::generate(&Parser::parse_document(pilule).unwrap(), outlook);
-    assert!(html.contains(r#"arcsize="50%""#), "pilule non transmise a VML : {html}");
+    assert!(
+        html.contains(r#"arcsize="50%""#),
+        "pilule non transmise a VML : {html}"
+    );
 
     let carre = r#"<ue-email><ue-layout><ue-row><ue-col><ue-button href="https://x.fr" border-radius="0px">Go</ue-button></ue-col></ue-row></ue-layout></ue-email>"#;
     let html = HtmlGenerator::generate(&Parser::parse_document(carre).unwrap(), outlook);
-    assert!(html.contains(r#"arcsize="0%""#), "angles droits non transmis a VML");
+    assert!(
+        html.contains(r#"arcsize="0%""#),
+        "angles droits non transmis a VML"
+    );
 }
 
 #[test]
@@ -130,7 +151,10 @@ fn button_is_centered_by_a_table_align_attribute() {
 
     for id in ["gmail", "outlook_desktop", "apple_mail"] {
         let html = HtmlGenerator::generate(&doc, registry.get_profile(id).unwrap());
-        assert!(html.contains(r#"align="center""#), "bouton non centre sur {id}");
+        assert!(
+            html.contains(r#"align="center""#),
+            "bouton non centre sur {id}"
+        );
     }
 }
 
@@ -141,7 +165,10 @@ fn text_accepts_an_alignment() {
     let registry = ProfileRegistry::load();
 
     let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
-    assert!(html.contains("text-align:center"), "alignement du texte ignore");
+    assert!(
+        html.contains("text-align:center"),
+        "alignement du texte ignore"
+    );
 }
 
 #[test]
@@ -151,7 +178,10 @@ fn image_accepts_a_border_radius() {
     let registry = ProfileRegistry::load();
 
     let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
-    assert!(html.contains("border-radius:16px"), "arrondi de l'image ignore");
+    assert!(
+        html.contains("border-radius:16px"),
+        "arrondi de l'image ignore"
+    );
 }
 
 #[test]
@@ -180,10 +210,26 @@ fn a_styled_card_layout_renders_on_every_profile() {
     for profile in registry.list_profiles() {
         let html = HtmlGenerator::generate(&doc, profile);
 
-        assert!(html.contains("#FFFFFF"), "fond de tuile perdu sur {}", profile.id);
-        assert!(html.contains("padding:20px"), "marge de tuile perdue sur {}", profile.id);
-        assert!(html.contains("#22C55E"), "couleur de bouton perdue sur {}", profile.id);
-        assert!(html.contains("coins.png"), "image perdue sur {}", profile.id);
+        assert!(
+            html.contains("#FFFFFF"),
+            "fond de tuile perdu sur {}",
+            profile.id
+        );
+        assert!(
+            html.contains("padding:20px"),
+            "marge de tuile perdue sur {}",
+            profile.id
+        );
+        assert!(
+            html.contains("#22C55E"),
+            "couleur de bouton perdue sur {}",
+            profile.id
+        );
+        assert!(
+            html.contains("coins.png"),
+            "image perdue sur {}",
+            profile.id
+        );
     }
 }
 
@@ -200,12 +246,18 @@ fn button_padding_and_font_size_are_configurable() {
     for id in ["gmail", "outlook_desktop"] {
         let html = HtmlGenerator::generate(&doc, registry.get_profile(id).unwrap());
 
-        assert!(html.contains("font-size:18px"), "taille de police ignoree sur {id}");
+        assert!(
+            html.contains("font-size:18px"),
+            "taille de police ignoree sur {id}"
+        );
 
         // Outlook passe par VML, dont la geometrie ne connait pas le padding :
         // seule la version HTML le porte.
         if id != "outlook_desktop" {
-            assert!(html.contains("padding:20px 48px"), "marge interieure ignoree sur {id}");
+            assert!(
+                html.contains("padding:20px 48px"),
+                "marge interieure ignoree sur {id}"
+            );
         }
     }
 }
@@ -218,7 +270,10 @@ fn button_keeps_sensible_defaults_without_those_attributes() {
 
     let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
 
-    assert!(html.contains("padding:12px 24px"), "defaut de marge modifie");
+    assert!(
+        html.contains("padding:12px 24px"),
+        "defaut de marge modifie"
+    );
     assert!(html.contains("font-size:16px"), "defaut de taille modifie");
 }
 
@@ -232,8 +287,14 @@ fn a_percentage_radius_still_reaches_outlook_as_a_full_round() {
     let registry = ProfileRegistry::load();
 
     let html = HtmlGenerator::generate(&doc, registry.get_profile("outlook_desktop").unwrap());
-    assert!(html.contains(r#"arcsize="50%""#), "arrondi complet non transmis : {html}");
+    assert!(
+        html.contains(r#"arcsize="50%""#),
+        "arrondi complet non transmis : {html}"
+    );
 
     let html = HtmlGenerator::generate(&doc, registry.get_profile("gmail").unwrap());
-    assert!(html.contains("border-radius:50%"), "pourcentage perdu en CSS");
+    assert!(
+        html.contains("border-radius:50%"),
+        "pourcentage perdu en CSS"
+    );
 }

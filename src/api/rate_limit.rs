@@ -3,6 +3,13 @@
 //! que par le backend Elixir, jamais directement par un navigateur, donc
 //! une seule fenêtre globale suffit à se protéger d'un emballement
 //! (boucle, bug côté appelant) sans la complexité d'un suivi par IP.
+//!
+//! Ce choix suppose un seul appelant de confiance : le vrai contrôle par
+//! tenant (équité entre organisations, quota `~1000 appels/jour/client`,
+//! voir `main.rs`) vit côté backend Elixir, qui connaît l'identité de
+//! l'appelant — ce compilateur ne la voit jamais. Une fenêtre par tenant
+//! ici serait donc soit un doublon de cette logique, soit incapable de
+//! l'appliquer correctement faute d'identité fiable.
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -50,7 +57,20 @@ impl RateLimiter {
     /// `true` si la requête est autorisée à cet instant — séparé de `Instant::now()`
     /// pour pouvoir tester la logique de fenêtre sans dépendre de l'horloge réelle.
     fn check_at(&self, now: Instant) -> bool {
-        let mut window = self.window.lock().expect("rate limiter mutex poisoned");
+        // Un panic pendant qu'on tient ce verrou (ailleurs, sur un autre
+        // thread) empoisonnerait le mutex pour toujours — avec `.expect()`,
+        // CE thread paniquerait aussi, et un axum/hyper qui retente derrière
+        // reproduirait le même panic indéfiniment : *toutes* les requêtes
+        // futures se retrouveraient bloquées par un rate limiter cassé, pour
+        // une fonctionnalité qui n'est qu'un garde-fou anti-emballement, pas
+        // une garantie de sécurité. Récupérer les données malgré le
+        // poisoning est sûr ici : `Window` ne peut pas se retrouver dans un
+        // état invariant-violant à mi-écriture (deux `usize`/`Instant`, pas
+        // de structure partiellement construite qui compterait).
+        let mut window = match self.window.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
         if now.duration_since(window.started_at) >= WINDOW {
             window.started_at = now;
@@ -66,11 +86,7 @@ impl RateLimiter {
     }
 }
 
-pub async fn enforce(
-    State(limiter): State<RateLimiter>,
-    request: Request,
-    next: Next,
-) -> Response {
+pub async fn enforce(State(limiter): State<RateLimiter>, request: Request, next: Next) -> Response {
     if limiter.check() {
         next.run(request).await
     } else {
@@ -99,7 +115,10 @@ mod tests {
         assert!(limiter.check_at(now));
         assert!(limiter.check_at(now));
         assert!(limiter.check_at(now));
-        assert!(!limiter.check_at(now), "4th request in the same window must be rejected");
+        assert!(
+            !limiter.check_at(now),
+            "4th request in the same window must be rejected"
+        );
     }
 
     #[test]
@@ -111,7 +130,10 @@ mod tests {
         assert!(!limiter.check_at(now));
 
         let next_window = now + Duration::from_secs(1);
-        assert!(limiter.check_at(next_window), "a new window must reset the count");
+        assert!(
+            limiter.check_at(next_window),
+            "a new window must reset the count"
+        );
     }
 
     #[test]

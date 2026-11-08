@@ -65,7 +65,7 @@ There are exactly fifteen. No others are accepted.
 | `ue-image` | Image | — |
 | `ue-divider` | Horizontal rule | — |
 | `ue-spacer` | Vertical space | — |
-| `ue-interactive` | Interactive block (AMP-style) | content tags |
+| `ue-interactive` | Fallback wrapper for AMP-style content | text only (no nested tags — see below) |
 | `ue-raw` | Escape hatch for raw HTML | raw content |
 | `ue-hero` | Banner with a background image | content tags |
 | `ue-bold` | Inline bold, mid-sentence | text, `ue-italic` |
@@ -90,19 +90,52 @@ usual reason a template comes out unstyled.
 
 | Tag | Attributes |
 |---|---|
-| `ue-email` | `lang`, `dark-mode`, `font-family` |
+| `ue-email` | `lang`, `dark-mode`, `font-family`, `preview-text` |
 | `ue-layout` | `background`, `background-light`, `background-dark`, `padding`, `margin`, `max-width` |
 | `ue-row` | `background`, `background-light`, `background-dark`, `padding`, `border`, `border-radius`, `align`, `gap`, `stack-on="mobile"` |
-| `ue-col` | `background`, `background-light`, `background-dark`, `padding`, `border`, `border-radius`, `align` |
+| `ue-col` | `background`, `background-light`, `background-dark`, `padding`, `border`, `border-radius`, `align`, `width` |
 | `ue-heading` | `level` *(required)*, `color`, `color-light`, `color-dark`, `font-size`, `align` |
 | `ue-text` | `color`, `color-light`, `color-dark`, `font-size`, `line-height`, `align` |
 | `ue-button` | `href` *(required)*, `background`, `color`, `theme`, `border-radius`, `padding`, `font-size`, `align`, `accessible-label` |
 | `ue-image` | `src` + `alt` *(required)*, `width`, `height`, `border-radius`, `dark-src` |
 | `ue-divider` | `color`, `thickness`, `margin` |
 | `ue-spacer` | `height` |
+| `ue-interactive` | `fallback-src` |
 | `ue-hero` | `src` *(required)*, `background`, `width`, `height`, `padding`, `align` |
 
 `background` and `background-light` are interchangeable everywhere.
+
+### Preview text
+
+`preview-text` on `<ue-email>` sets the preheader — the snippet most
+clients show next to the subject line in the inbox:
+
+```html
+<ue-email preview-text="Your order ships tomorrow, plus 10% off your next one.">
+```
+
+Without it, clients fall back to the first visible text in the email —
+often "View in browser" or an image's alt text, which nobody picks on
+purpose. The compiler renders it as a hidden block right after `<body>`,
+padded with zero-width characters so the client's own snippet extraction
+doesn't spill into the body content that follows.
+
+### Column widths
+
+By default, columns in a row split the available space evenly. `width` on
+`ue-col` overrides that for one or more columns — a common case is an
+asymmetric split, e.g. a 62/36 image-and-text layout:
+
+```html
+<ue-row>
+  <ue-col width="62%">...</ue-col>
+  <ue-col width="36%">...</ue-col>
+</ue-row>
+```
+
+Accepts a percentage or a pixel value (with or without the `px` suffix).
+Columns without `width` keep sharing the remaining space evenly, whatever
+that turns out to be — mixing a fixed-width column with unset ones is valid.
 
 ### Cards
 
@@ -272,6 +305,23 @@ Both work across every profile, including the Outlook VML fallback.
 geometry and ignores `padding`, so a very compact or very wide button will
 look closer to the default there — the colour, the label and the rounding do
 follow.
+
+### Interactive content
+
+`ue-interactive` exists for AMP-for-Email content that the calling backend
+injects itself — the compiler does not generate any AMP markup. Today it
+does exactly one thing: if `fallback-src` is set, it renders a plain
+`<img>` (the fallback shown to clients that don't support the interactive
+version); otherwise it renders its own text content untouched.
+
+```html
+<ue-interactive fallback-src="poll-result.png"></ue-interactive>
+```
+
+It does not currently accept nested tags as children — only text and
+template placeholders. Treat it as a placeholder for a fallback image (or
+static text) until real AMP content injection is designed, not as a
+general-purpose interactive container yet.
 
 ## Template variables
 

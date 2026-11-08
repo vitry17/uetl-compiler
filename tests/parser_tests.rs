@@ -89,7 +89,10 @@ fn parses_deeply_nested_rows_and_cols() {
     }
 
     let max_depth = doc.children.iter().map(depth).max().unwrap_or(0);
-    assert!(max_depth >= 5, "expected at least 5 levels of nesting, got {max_depth}");
+    assert!(
+        max_depth >= 5,
+        "expected at least 5 levels of nesting, got {max_depth}"
+    );
 }
 
 #[test]
@@ -107,8 +110,14 @@ fn divider_and_spacer_are_valid_directly_under_layout() {
 
     let doc = Parser::parse_document(src).unwrap();
 
-    assert!(doc.children.iter().any(|c| find_element(c, UetlTag::Divider).is_some()));
-    assert!(doc.children.iter().any(|c| find_element(c, UetlTag::Spacer).is_some()));
+    assert!(doc
+        .children
+        .iter()
+        .any(|c| find_element(c, UetlTag::Divider).is_some()));
+    assert!(doc
+        .children
+        .iter()
+        .any(|c| find_element(c, UetlTag::Spacer).is_some()));
 }
 
 #[test]
