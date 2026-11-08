@@ -25,6 +25,55 @@ pub fn collect_warnings(doc: &DocumentNode) -> Vec<String> {
     warnings
 }
 
+/// Avertissements de structure du document entier, servis par `/validate`
+/// (éditeur et `lint_template`), séparés de `collect_warnings` qui ne parle
+/// que d'attributs : un aperçu ou un bloc réutilisable n'a pas à être
+/// signalé pour un titre manquant.
+///
+/// Un seul titre de niveau 1 : c'est le repère principal que suivent les
+/// lecteurs d'écran et que les assistants IA des boîtes mail reprennent
+/// pour résumer un message. Zéro ou plusieurs, et le sujet du mail devient
+/// ambigu pour eux. Avertissement seulement, jamais une erreur.
+pub fn collect_structure_warnings(doc: &DocumentNode) -> Vec<String> {
+    let mut level_one = 0;
+    for child in &doc.children {
+        count_level_one_headings(child, &mut level_one);
+    }
+    match level_one {
+        1 => Vec::new(),
+        0 => vec![
+            "heading_structure: no <ue-heading level=\"1\"> — add exactly one main title, \
+             screen readers and inbox AI assistants rely on it"
+                .to_string(),
+        ],
+        n => vec![format!(
+            "heading_structure: {n} <ue-heading level=\"1\"> found — keep exactly one main \
+             title and use level=\"2\" or more for the others"
+        )],
+    }
+}
+
+fn count_level_one_headings(node: &Node, count: &mut usize) {
+    if let Node::Element(el) = node {
+        if el.tag == UetlTag::Heading {
+            // Même règle que `html_gen::gen_heading` : un niveau absent ou
+            // invalide est rendu en `<h1>`, il compte donc comme tel.
+            let rendered_level_one = match el.attrs.get("level") {
+                Some(AttrValue::String(value)) => {
+                    !matches!(value.as_str(), "2" | "3" | "4" | "5" | "6")
+                }
+                _ => true,
+            };
+            if rendered_level_one {
+                *count += 1;
+            }
+        }
+        for child in &el.children {
+            count_level_one_headings(child, count);
+        }
+    }
+}
+
 fn walk_node(node: &Node, warnings: &mut Vec<String>) {
     if let Node::Element(el) = node {
         check_unknown_attributes(el, warnings);

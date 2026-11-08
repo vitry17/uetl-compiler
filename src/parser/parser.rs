@@ -240,8 +240,13 @@ impl Parser {
             _ => None,
         };
 
+        // Un aperçu fait d'une seule variable (`preview-text="{{ accroche }}"`)
+        // est lu comme un template par `parse_attr_value` : il était ignoré en
+        // silence. On le garde, l'expression sera personnalisée à l'envoi
+        // comme le reste du HTML.
         let preview_text = match root.attrs.get("preview-text") {
             Some(AttrValue::String(s)) => Some(s.clone()),
+            Some(AttrValue::Template(expr)) => Some(format!("{{{{{expr}}}}}")),
             _ => None,
         };
 
@@ -474,8 +479,13 @@ impl Parser {
             _ => None,
         };
 
+        // Un aperçu fait d'une seule variable (`preview-text="{{ accroche }}"`)
+        // est lu comme un template par `parse_attr_value` : il était ignoré en
+        // silence. On le garde, l'expression sera personnalisée à l'envoi
+        // comme le reste du HTML.
         let preview_text = match root.attrs.get("preview-text") {
             Some(AttrValue::String(s)) => Some(s.clone()),
+            Some(AttrValue::Template(expr)) => Some(format!("{{{{{expr}}}}}")),
             _ => None,
         };
 

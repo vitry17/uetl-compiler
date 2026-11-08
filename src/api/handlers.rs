@@ -4,7 +4,9 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::compiler::{collect_warnings, HtmlGenerator, ProfileRegistry};
+use crate::compiler::{
+    collect_structure_warnings, collect_warnings, to_plain_text, HtmlGenerator, ProfileRegistry,
+};
 use crate::parser::{Diagnostic, DocumentNode, ParseError, Parser};
 
 /// Taille maximale d'un document UETL accepté. Bien au-delà de tout
@@ -82,6 +84,13 @@ pub struct CompileRequest {
 pub struct CompileResult {
     pub html: String,
     pub warnings: Vec<String>,
+    /// Version texte brut, produite depuis l'arbre UETL (voir
+    /// `compiler::plain_text`). Renseignée seulement par `/compile/send` :
+    /// c'est le document réellement envoyé qui a besoin d'une partie texte,
+    /// pas les aperçus par client. Absente du JSON quand elle est vide, pour
+    /// que les clients existants ne voient aucune différence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -161,7 +170,11 @@ pub async fn compile(Json(req): Json<CompileRequest>) -> Result<Json<CompileResu
     let warnings = collect_warnings(&document);
     let html = HtmlGenerator::generate(&document, profile);
 
-    Ok(Json(CompileResult { html, warnings }))
+    Ok(Json(CompileResult {
+        html,
+        warnings,
+        text: None,
+    }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,7 +205,12 @@ pub async fn compile_send(
         ProfileRegistry::delivery_profile(),
         req.title.as_deref(),
     );
-    Ok(Json(CompileResult { html, warnings }))
+    let text = Some(to_plain_text(&document));
+    Ok(Json(CompileResult {
+        html,
+        warnings,
+        text,
+    }))
 }
 
 pub async fn compile_all(
@@ -216,6 +234,7 @@ pub async fn compile_all(
                 CompileResult {
                     html,
                     warnings: warnings.clone(),
+                    text: None,
                 },
             )
         })
@@ -233,7 +252,14 @@ pub async fn validate(
     // (ex: deux boutons sans `href` dans le même document) plutôt que
     // d'en corriger une, relancer `/validate`, en découvrir une autre.
     let (document, errors) = parse_document_tolerant_blocking(req.uetl).await;
-    let warnings = document.as_ref().map(collect_warnings).unwrap_or_default();
+    let warnings = document
+        .as_ref()
+        .map(|doc| {
+            let mut warnings = collect_warnings(doc);
+            warnings.extend(collect_structure_warnings(doc));
+            warnings
+        })
+        .unwrap_or_default();
     Ok(Json(ValidateResponse {
         valid: errors.is_empty(),
         errors: errors.iter().map(ToString::to_string).collect(),

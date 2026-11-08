@@ -35,14 +35,16 @@ fn preview_text_is_rendered_as_a_hidden_block_right_after_body_opens() {
 }
 
 #[test]
-fn preview_text_is_padded_with_zero_width_spaces() {
+fn preview_text_has_no_invisible_unicode_padding() {
+    // Les assistants IA et certains filtres lisent le HTML brut : un
+    // remplissage d'espaces de largeur nulle y passe pour une manipulation.
     let src = r#"<ue-email preview-text="Short preview"><ue-layout><ue-row><ue-col><ue-text>Body</ue-text></ue-col></ue-row></ue-layout></ue-email>"#;
     let html = compile(src);
 
-    assert!(
-        html.contains("&#8203;"),
-        "remplissage absent, le snippet auto-genere deborderait sur le corps"
-    );
+    assert!(html.contains("Short preview"));
+    assert!(!html.contains("&#8203;"));
+    assert!(!html.contains('\u{200B}'));
+    assert_eq!(html.matches("display:none;max-height:0").count(), 1);
 }
 
 #[test]

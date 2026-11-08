@@ -22,6 +22,11 @@ pub struct HtmlGenerator<'a> {
     /// les tableaux, et toute la mise en page en est faite.
     font_family: String,
     document_title: Option<String>,
+    /// Attributs `lang`/`dir` du document, déjà échappés, répétés sur
+    /// `<body>` et sur le conteneur principal : Gmail et d'autres webmails
+    /// retirent `<html>` et `<body>`, et avec eux la langue que lisent les
+    /// lecteurs d'écran et les assistants IA.
+    lang_dir_attrs: String,
     #[allow(dead_code)]
     indent_level: usize,
     next_id: Cell<usize>,
@@ -47,6 +52,11 @@ impl<'a> HtmlGenerator<'a> {
             document_title: title
                 .filter(|value| !value.trim().is_empty())
                 .map(html_escape),
+            lang_dir_attrs: format!(
+                " lang=\"{}\" dir=\"{}\"",
+                attr_escape(&ast.lang),
+                text_direction(&ast.lang)
+            ),
             font_family: ast
                 .font_family
                 .clone()
@@ -296,8 +306,8 @@ impl<'a> HtmlGenerator<'a> {
             "padding:0;"
         };
         format!(
-            "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n{title}<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{dark_meta}{style_tag}\n</head>\n<body style=\"margin:0;{body_padding}\">{preheader}\n{body}\n</body>\n</html>",
-            lang = attr_escape(&doc.lang),
+            "<!DOCTYPE html>\n<html{lang_dir}>\n<head>\n{title}<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{dark_meta}{style_tag}\n</head>\n<body{lang_dir} style=\"margin:0;{body_padding}\">{preheader}\n{body}\n</body>\n</html>",
+            lang_dir = self.lang_dir_attrs,
         )
     }
 
@@ -334,9 +344,10 @@ impl<'a> HtmlGenerator<'a> {
         };
 
         format!(
-            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{class_attr}{bgcolor}{outer_style}><tr><td align=\"center\">{mso_open}\
+            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{lang_dir}{class_attr}{bgcolor}{outer_style}><tr><td align=\"center\">{mso_open}\
 <table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"{inner_style}><tr><td{cell_style}>{rows}</td></tr></table>{mso_close}\
-</td></tr></table>"
+</td></tr></table>",
+            lang_dir = self.lang_dir_attrs,
         )
     }
 
@@ -966,20 +977,35 @@ fn attr_escape(v: &str) -> String {
 /// Bloc caché contenant le texte d'aperçu (« preheader »), affiché par la
 /// plupart des clients à côté de l'objet dans la liste des messages.
 ///
-/// `&#8203;` (espace de largeur nulle) répété comble le reste de
-/// l'extrait auto-généré : sans ce remplissage, un client qui prend ses
-/// 100-150 premiers caractères visibles continue dans le corps de l'email
-/// juste après le texte d'aperçu, produisant un aperçu tronqué et incohérent
-/// ("Confirmez votre commande [reste du contenu qui suit]…").
+/// Un seul bloc, sans remplissage. On ajoutait autrefois 150 espaces de
+/// largeur nulle (`&#8203;`) pour que l'extrait ne se prolonge pas avec le
+/// corps du mail. Mais les assistants IA et certains filtres lisent le HTML
+/// brut, et y voient de l'Unicode invisible, un signal de manipulation : le
+/// remède était pire que le mal. Si l'extrait se prolonge, c'est avec la
+/// première phrase visible, qui doit de toute façon porter l'essentiel.
 /// `mso-hide:all` masque le bloc dans Outlook, qui ignore `display:none`
 /// sur certains éléments (même technique que la variante dark-mode d'une
 /// image, voir `gen_image`).
 fn preheader_block(text: &str) -> String {
     let escaped = html_escape(text);
-    let padding = "&#8203;".repeat(150);
     format!(
-        "\n<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;\">{escaped}{padding}</div>"
+        "\n<div style=\"display:none;max-height:0;overflow:hidden;mso-hide:all;\">{escaped}</div>"
     )
+}
+
+/// Sens d'écriture déduit de la langue déclarée (`ue-email lang`), jamais
+/// deviné depuis le contenu. Seules les écritures de droite à gauche
+/// courantes sont listées ; tout le reste est `ltr`.
+pub fn text_direction(lang: &str) -> &'static str {
+    let primary = lang
+        .split(['-', '_'])
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match primary.as_str() {
+        "ar" | "he" | "iw" | "fa" | "ur" | "yi" | "ps" | "dv" | "ckb" | "ug" | "sd" => "rtl",
+        _ => "ltr",
+    }
 }
 
 fn html_escape(text: &str) -> String {
